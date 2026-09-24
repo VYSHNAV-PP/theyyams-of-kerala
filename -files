@@ -1,0 +1,33 @@
+[33me95b149[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m)[m Initial commit
+ .env.example                                       |    2 [32m+[m
+ .gitignore                                         |   34 [32m+[m
+ .prettierignore                                    |    7 [32m+[m
+ .prettierrc                                        |    6 [32m+[m
+ README.md                                          |   51 [32m+[m
+ eslint.config.js                                   |   40 [32m+[m
+ package-lock.json                                  | 5229 [32m++++++++++++++++++++[m
+ package.json                                       |   53 [32m+[m
+ src/components/EventMap.tsx                        | 1055 [32m++++[m
+ src/components/EventViews.tsx                      |   72 [32m+[m
+ src/components/FilterSheet.tsx                     |   92 [32m+[m
+ src/components/SiteHeader.tsx                      |   40 [32m+[m
+ src/integrations/supabase/client.ts                |   32 [32m+[m
+ src/integrations/supabase/types.ts                 |  417 [32m++[m
+ src/lib/events.ts                                  | 1372 [32m+++++[m
+ src/lib/geo.ts                                     |   59 [32m+[m
+ src/lib/taxonomy.ts                                |   40 [32m+[m
+ src/routeTree.gen.ts                               |  105 [32m+[m
+ src/router.tsx                                     |   16 [32m+[m
+ src/routes/__root.tsx                              |  119 [32m+[m
+ src/routes/event.$id.tsx                           | 1534 [32m++++++[m
+ src/routes/index.tsx                               |  916 [32m++++[m
+ src/routes/submit.tsx                              |  281 [32m++[m
+ src/start.ts                                       |    8 [32m+[m
+ src/styles.css                                     |  156 [32m+[m
+ supabase/config.toml                               |    1 [32m+[m
+ .../202609240001_public_votes_reviews.sql          |  407 [32m++[m
+ ...063426_63c59ac5-302a-40d2-97cc-a113874ed270.sql |   56 [32m+[m
+ .../migrations/20260925000000_kerala_events_v2.sql |  149 [32m+[m
+ tsconfig.json                                      |   30 [32m+[m
+ vite.config.ts                                     |   14 [32m+[m
+ 31 files changed, 12393 insertions(+)
