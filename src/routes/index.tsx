@@ -459,13 +459,11 @@ function Home() {
 
       {/* CATEGORIES + QUICK FILTERS */}
       <div className="shrink-0 border-b border-border bg-card">
-        <div className="mx-auto w-full max-w-[1800px] px-3 py-2 sm:px-5 lg:px-8 xl:px-10">
+        <div className="mx-auto flex w-full max-w-[1800px] flex-col items-center px-3 py-2 sm:px-5 lg:px-8 xl:px-10">
 
-          {/* CATEGORIES
-              Plain original Chip styling.
-              DO NOT pass tone here. */}
+          {/* CATEGORIES */}
           <div
-            className="flex flex-wrap gap-2"
+            className="flex w-full flex-wrap justify-center gap-2"
             role="group"
             aria-label="Categories"
           >
@@ -521,16 +519,15 @@ function Home() {
             )}
           </div>
 
-          {/* QUICK FILTERS
-              Separate visual system from categories. */}
+          {/* QUICK FILTERS */}
           <div
-            className="mt-2 rounded-xl border border-[#e2e8f0] bg-[#f1f5f9] p-1.5"
+            className="mt-2 w-full rounded-xl border border-[#e2e8f0] bg-[#f1f5f9] p-1.5"
             role="group"
             aria-label="Quick filters"
           >
-            <div className="flex flex-wrap items-center gap-1.5">
+            <div className="flex flex-wrap items-center justify-center gap-1.5">
 
-              <div className="flex h-9 shrink-0 items-center gap-1.5 px-2 text-[11px] font-bold uppercase tracking-wider text-[#64748b]">
+              <div className="flex h-9 shrink-0 items-center gap-1.5 px-2 text-[11px] font-bold uppercase tracking-wider text-[#64748b] lg:h-10 lg:px-3 lg:text-xs">
                 <CalendarDays
                   size={14}
                   aria-hidden="true"
@@ -561,7 +558,7 @@ function Home() {
                           k,
                         )
                       }
-                      className="flex h-9 items-center gap-2 rounded-lg border px-3 text-[12px] font-semibold transition-all focus-visible:outline-2 focus-visible:outline-ring"
+                      className="flex h-9 items-center gap-2 rounded-lg border px-3 text-[12px] font-semibold transition-all focus-visible:outline-2 focus-visible:outline-ring lg:h-10 lg:px-4 lg:text-[13px]"
                       style={
                         active
                           ? {
@@ -616,7 +613,7 @@ function Home() {
                         : "free",
                   }))
                 }
-                className="flex h-9 items-center gap-2 rounded-lg border px-3 text-[12px] font-semibold transition-all focus-visible:outline-2 focus-visible:outline-ring"
+                className="flex h-9 items-center gap-2 rounded-lg border px-3 text-[12px] font-semibold transition-all focus-visible:outline-2 focus-visible:outline-ring lg:h-10 lg:px-4 lg:text-[13px]"
                 style={
                   f.entry ===
                   "free"
