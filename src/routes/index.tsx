@@ -449,7 +449,7 @@ function Home() {
     filtered.length === 0;
 
   return (
-    <div className="flex h-dvh flex-col bg-background">
+    <div className="flex h-dvh min-h-0 flex-col overflow-hidden bg-background">
       <SiteHeader
         search={{
           value: f.q,
@@ -459,11 +459,11 @@ function Home() {
 
       {/* CATEGORIES + QUICK FILTERS */}
       <div className="shrink-0 border-b border-border bg-card">
-        <div className="mx-auto flex w-full max-w-[1800px] flex-col items-center px-3 py-2 sm:px-5 lg:px-8 xl:px-10">
+        <div className="mx-auto flex w-full max-w-[1800px] flex-col items-center px-2 py-2 sm:px-4 sm:py-2.5 md:px-6 lg:px-8 xl:px-10">
 
           {/* CATEGORIES */}
           <div
-            className="flex w-full flex-wrap justify-center gap-2"
+            className="flex w-full flex-wrap justify-center gap-1.5 sm:gap-2 md:gap-2.5"
             role="group"
             aria-label="Categories"
           >
@@ -481,7 +481,9 @@ function Home() {
                 }))
               }
             >
-              All
+              <span className="md:text-sm">
+                All
+              </span>
             </Chip>
 
             {CATEGORIES.map(
@@ -505,7 +507,10 @@ function Home() {
                     }))
                   }
                 >
-                  <span aria-hidden="true">
+                  <span
+                    className="text-base md:text-lg"
+                    aria-hidden="true"
+                  >
                     {
                       CATEGORY_META[
                         c
@@ -513,7 +518,9 @@ function Home() {
                     }
                   </span>
 
-                  {c}
+                  <span className="md:text-sm">
+                    {c}
+                  </span>
                 </Chip>
               ),
             )}
@@ -521,19 +528,22 @@ function Home() {
 
           {/* QUICK FILTERS */}
           <div
-            className="mt-2 w-full rounded-xl border border-[#e2e8f0] bg-[#f1f5f9] p-1.5"
+            className="mt-2 w-full rounded-xl border border-[#e2e8f0] bg-[#f1f5f9] p-1.5 sm:mt-2.5 md:mt-3 md:p-2"
             role="group"
             aria-label="Quick filters"
           >
-            <div className="flex flex-wrap items-center justify-center gap-1.5">
+            <div className="flex flex-wrap items-center justify-center gap-1.5 md:gap-2">
 
-              <div className="flex h-9 shrink-0 items-center gap-1.5 px-2 text-[11px] font-bold uppercase tracking-wider text-[#64748b] lg:h-10 lg:px-3 lg:text-xs">
+              <div className="flex h-9 shrink-0 items-center gap-1.5 px-2 text-[10px] font-bold uppercase tracking-wider text-[#64748b] md:h-10 md:px-3 md:text-xs">
                 <CalendarDays
                   size={14}
+                  className="md:h-4 md:w-4"
                   aria-hidden="true"
                 />
 
-                Quick filters
+                <span>
+                  Quick filters
+                </span>
               </div>
 
               {QUICK.map(
@@ -558,7 +568,7 @@ function Home() {
                           k,
                         )
                       }
-                      className="flex h-9 items-center gap-2 rounded-lg border px-3 text-[12px] font-semibold transition-all focus-visible:outline-2 focus-visible:outline-ring lg:h-10 lg:px-4 lg:text-[13px]"
+                      className="flex h-9 shrink-0 items-center gap-2 rounded-lg border px-3 text-[11px] font-semibold transition-all focus-visible:outline-2 focus-visible:outline-ring md:h-10 md:px-4 md:text-[13px]"
                       style={
                         active
                           ? {
@@ -582,7 +592,7 @@ function Home() {
                       }
                     >
                       <span
-                        className="h-1.5 w-1.5 rounded-full"
+                        className="h-1.5 w-1.5 shrink-0 rounded-full md:h-2 md:w-2"
                         style={{
                           backgroundColor:
                             tone,
@@ -613,7 +623,7 @@ function Home() {
                         : "free",
                   }))
                 }
-                className="flex h-9 items-center gap-2 rounded-lg border px-3 text-[12px] font-semibold transition-all focus-visible:outline-2 focus-visible:outline-ring lg:h-10 lg:px-4 lg:text-[13px]"
+                className="flex h-9 shrink-0 items-center gap-2 rounded-lg border px-3 text-[11px] font-semibold transition-all focus-visible:outline-2 focus-visible:outline-ring md:h-10 md:px-4 md:text-[13px]"
                 style={
                   f.entry ===
                   "free"
@@ -638,7 +648,7 @@ function Home() {
                 }
               >
                 <span
-                  className="h-1.5 w-1.5 rounded-full"
+                  className="h-1.5 w-1.5 shrink-0 rounded-full md:h-2 md:w-2"
                   style={{
                     backgroundColor:
                       "#14b8a6",
@@ -654,13 +664,13 @@ function Home() {
       </div>
 
       {/* MAIN WORKSPACE */}
-      <main className="relative min-h-0 flex-1">
-        <div className="mx-auto h-full w-full max-w-[1800px] px-2 py-2 sm:px-3 lg:px-4">
-          <div className="relative flex h-full min-h-0 gap-3">
+      <main className="relative min-h-0 flex-1 overflow-hidden">
+        <div className="mx-auto h-full w-full max-w-[1800px] px-1.5 py-1.5 sm:px-2 sm:py-2 md:px-3 lg:px-4">
+          <div className="relative flex h-full min-h-0 gap-2 sm:gap-3 lg:gap-4">
 
             {/* MAP PANEL */}
             <div
-              className={`relative min-h-0 min-w-0 flex-1 overflow-hidden rounded-2xl border border-border bg-muted shadow-sm ${
+              className={`relative min-h-0 min-w-0 flex-1 overflow-hidden rounded-xl border border-border bg-muted shadow-sm sm:rounded-2xl ${
                 view === "map"
                   ? ""
                   : "hidden lg:block"
@@ -748,14 +758,14 @@ function Home() {
 
               {empty &&
                 !selected && (
-                  <div className="absolute inset-x-3 bottom-4 z-[500] mx-auto max-w-sm rounded-lg border border-border bg-card p-4 text-center shadow-lg">
+                  <div className="absolute inset-x-2 bottom-3 z-[500] mx-auto max-w-sm rounded-lg border border-border bg-card p-4 text-center shadow-lg sm:inset-x-3 sm:bottom-4">
                     <p className="text-sm font-semibold">
                       {all?.length
                         ? "No events match these filters"
                         : "No events on the map yet"}
                     </p>
 
-                    <div className="mt-3 flex justify-center gap-2">
+                    <div className="mt-3 flex flex-wrap justify-center gap-2">
                       {filtersOn && (
                         <button
                           type="button"
@@ -788,7 +798,7 @@ function Home() {
 
               {selected &&
                 view === "map" && (
-                  <div className="absolute inset-x-0 bottom-0 z-[600] lg:inset-x-auto lg:bottom-3 lg:left-3 lg:w-96">
+                  <div className="absolute inset-x-0 bottom-0 z-[600] sm:inset-x-2 sm:bottom-2 md:inset-x-3 md:bottom-3 lg:inset-x-auto lg:left-3 lg:w-96">
                     <EventPreview
                       e={selected}
                       onClose={() =>
@@ -800,8 +810,8 @@ function Home() {
                   </div>
                 )}
 
-              {/* MOBILE VIEW SWITCHER */}
-              <div className="absolute right-3 top-3 z-[600] flex overflow-hidden rounded-lg border border-border bg-card shadow-md lg:hidden">
+              {/* MOBILE / TABLET VIEW SWITCHER */}
+              <div className="absolute right-2 top-2 z-[600] flex overflow-hidden rounded-lg border border-border bg-card shadow-md sm:right-3 sm:top-3 lg:hidden">
                 <button
                   type="button"
                   aria-pressed={
@@ -810,7 +820,7 @@ function Home() {
                   onClick={() =>
                     setView("map")
                   }
-                  className={`flex h-9 items-center gap-1.5 px-3 text-sm font-medium ${
+                  className={`flex h-9 items-center gap-1.5 px-3 text-sm font-medium sm:h-10 sm:px-3.5 ${
                     view === "map"
                       ? "bg-foreground text-background"
                       : "bg-card hover:bg-muted"
@@ -831,7 +841,7 @@ function Home() {
                   onClick={() =>
                     setView("list")
                   }
-                  className={`flex h-9 items-center gap-1.5 px-3 text-sm font-medium ${
+                  className={`flex h-9 items-center gap-1.5 px-3 text-sm font-medium sm:h-10 sm:px-3.5 ${
                     view === "list"
                       ? "bg-foreground text-background"
                       : "bg-card hover:bg-muted"
@@ -849,7 +859,7 @@ function Home() {
             {/* DESKTOP EVENT PANEL */}
             <aside
               aria-label="Event list"
-              className={`flex min-h-0 w-full shrink-0 flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-sm lg:w-[380px] xl:w-[420px] ${
+              className={`flex min-h-0 w-full shrink-0 flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm sm:rounded-2xl lg:w-[360px] xl:w-[400px] 2xl:w-[420px] ${
                 view === "map"
                   ? "hidden lg:flex"
                   : "flex"
@@ -857,7 +867,7 @@ function Home() {
             >
               {/* CONTROLS INSIDE EVENT PANEL */}
               <div className="shrink-0 border-b border-border bg-card">
-                <div className="flex items-center justify-between gap-2 px-3 py-2">
+                <div className="flex items-center justify-between gap-2 px-2.5 py-2 sm:px-3">
                   <div className="min-w-0">
                     <p
                       className="truncate text-sm font-semibold"
@@ -880,7 +890,7 @@ function Home() {
                     )}
                   </div>
 
-                  <div className="flex shrink-0 items-center gap-2">
+                  <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
                     <button
                       type="button"
                       onClick={() =>
@@ -888,7 +898,7 @@ function Home() {
                           true,
                         )
                       }
-                      className="flex h-9 items-center gap-1.5 rounded-md border border-border px-3 text-sm font-medium hover:bg-muted"
+                      className="flex h-9 items-center gap-1.5 rounded-md border border-border px-2.5 text-sm font-medium hover:bg-muted sm:px-3"
                     >
                       <SlidersHorizontal
                         size={16}
@@ -1004,10 +1014,10 @@ function Home() {
               </div>
             </aside>
 
-            {/* MOBILE LIST VIEW */}
+            {/* MOBILE / TABLET LIST VIEW */}
             {view === "list" && (
-              <div className="min-w-0 flex-1 overflow-y-auto rounded-2xl border border-border bg-card shadow-sm lg:hidden">
-                <div className="border-b border-border px-3 py-2">
+              <div className="min-w-0 flex-1 overflow-y-auto rounded-xl border border-border bg-card shadow-sm sm:rounded-2xl lg:hidden">
+                <div className="border-b border-border px-2.5 py-2 sm:px-3">
                   <div className="flex items-center justify-between gap-2">
                     <p
                       className="min-w-0 truncate text-sm font-semibold"
@@ -1030,7 +1040,7 @@ function Home() {
                           true,
                         )
                       }
-                      className="flex h-9 shrink-0 items-center gap-1.5 rounded-md border border-border px-3 text-sm font-medium hover:bg-muted"
+                      className="flex h-9 shrink-0 items-center gap-1.5 rounded-md border border-border px-2.5 text-sm font-medium hover:bg-muted sm:px-3"
                     >
                       <SlidersHorizontal
                         size={16}
