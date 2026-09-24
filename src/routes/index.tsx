@@ -13,6 +13,7 @@ import {
   useState,
 } from "react";
 import {
+  CalendarDays,
   List,
   Map as MapIcon,
   Plus,
@@ -83,11 +84,12 @@ export const Route =
 const QUICK: [
   DateKey,
   string,
+  string,
 ][] = [
-  ["now", "Happening now"],
-  ["today", "Today"],
-  ["weekend", "This weekend"],
-  ["upcoming", "Upcoming"],
+  ["now", "Happening now", "#ef4444"],
+  ["today", "Today", "#3b82f6"],
+  ["weekend", "This weekend", "#8b5cf6"],
+  ["upcoming", "Upcoming", "#22c55e"],
 ];
 
 function useDebounced<T>(
@@ -455,12 +457,15 @@ function Home() {
         }}
       />
 
-      {/* FILTER AREA */}
+      {/* CATEGORIES + QUICK FILTERS */}
       <div className="shrink-0 border-b border-border bg-card">
-        <div className="mx-auto w-full max-w-[1800px] px-3 sm:px-5 lg:px-8 xl:px-10">
-          {/* Categories */}
+        <div className="mx-auto w-full max-w-[1800px] px-3 py-2 sm:px-5 lg:px-8 xl:px-10">
+
+          {/* CATEGORIES
+              Plain original Chip styling.
+              DO NOT pass tone here. */}
           <div
-            className="flex gap-2 overflow-x-auto pt-2"
+            className="flex flex-wrap gap-2"
             role="group"
             aria-label="Categories"
           >
@@ -489,10 +494,6 @@ function Home() {
                     f.category ===
                     c
                   }
-                  tone={
-                    CATEGORY_META[c]
-                      .hex
-                  }
                   onClick={() =>
                     setF((x) => ({
                       ...x,
@@ -513,158 +514,143 @@ function Home() {
                       ].icon
                     }
                   </span>
+
                   {c}
                 </Chip>
               ),
             )}
           </div>
 
-          {/* Quick filters */}
+          {/* QUICK FILTERS
+              Separate visual system from categories. */}
           <div
-            className="flex gap-2 overflow-x-auto py-2"
+            className="mt-2 rounded-xl border border-[#e2e8f0] bg-[#f1f5f9] p-1.5"
             role="group"
             aria-label="Quick filters"
           >
-            {QUICK.map(
-              ([k, l]) => (
-                <Chip
-                  key={k}
-                  active={
-                    f.date === k
-                  }
-                  onClick={() =>
-                    toggleDate(k)
-                  }
-                >
-                  {l}
-                </Chip>
-              ),
-            )}
+            <div className="flex flex-wrap items-center gap-1.5">
 
-            <Chip
-              active={
-                f.entry ===
-                "free"
-              }
-              onClick={() =>
-                setF((x) => ({
-                  ...x,
-                  entry:
-                    x.entry ===
-                    "free"
-                      ? "any"
-                      : "free",
-                }))
-              }
-            >
-              Free events
-            </Chip>
-          </div>
-        </div>
-      </div>
+              <div className="flex h-9 shrink-0 items-center gap-1.5 px-2 text-[11px] font-bold uppercase tracking-wider text-[#64748b]">
+                <CalendarDays
+                  size={14}
+                  aria-hidden="true"
+                />
 
-      {/* LOCATION / CONTROLS */}
-      <div className="shrink-0 border-b border-border bg-background">
-        <div className="mx-auto flex w-full max-w-[1800px] items-center justify-between gap-2 px-3 py-1.5 sm:px-5 lg:px-8 xl:px-10">
-          <p
-            className="min-w-0 truncate text-sm font-semibold"
-            aria-live="polite"
-          >
-            {q.isLoading
-              ? "Loading events…"
-              : `${place} · ${placeCount} ${
-                  placeCount ===
-                  1
-                    ? "event"
-                    : "events"
-                }`}
+                Quick filters
+              </div>
 
-            {f.subcategory && (
-              <span className="font-normal text-muted-foreground">
-                {" "}
-                ·{" "}
-                {f.subcategory}
-              </span>
-            )}
-          </p>
-
-          <div className="flex shrink-0 items-center gap-2">
-            <button
-              type="button"
-              onClick={() =>
-                setFilterOpen(
-                  true,
-                )
-              }
-              className="flex h-9 items-center gap-1.5 rounded-md border border-border px-3 text-sm font-medium hover:bg-muted"
-            >
-              <SlidersHorizontal
-                size={16}
-                aria-hidden="true"
-              />
-              Filters
-
-              {activeAdvanced >
-                0 && (
-                <span className="rounded-full bg-primary px-1.5 text-xs text-primary-foreground">
-                  {
-                    activeAdvanced
-                  }
-                </span>
-              )}
-            </button>
-
-            <div
-              className="flex overflow-hidden rounded-md border border-border"
-              role="group"
-              aria-label="View"
-            >
-              {(
-                [
-                  [
-                    "map",
-                    "Map",
-                    MapIcon,
-                  ],
-                  [
-                    "list",
-                    "List",
-                    List,
-                  ],
-                ] as const
-              ).map(
+              {QUICK.map(
                 ([
                   k,
-                  l,
-                  Icon,
-                ]) => (
-                  <button
-                    key={k}
-                    type="button"
-                    aria-pressed={
-                      view ===
-                      k
-                    }
-                    onClick={() =>
-                      setView(
-                        k,
-                      )
-                    }
-                    className={`flex h-9 items-center gap-1 px-3 text-sm font-medium ${
-                      view ===
-                      k
-                        ? "bg-foreground text-background"
-                        : "bg-card hover:bg-muted"
-                    }`}
-                  >
-                    <Icon
-                      size={16}
-                      aria-hidden="true"
-                    />
-                    {l}
-                  </button>
-                ),
+                  label,
+                  tone,
+                ]) => {
+                  const active =
+                    f.date ===
+                    k;
+
+                  return (
+                    <button
+                      key={k}
+                      type="button"
+                      aria-pressed={
+                        active
+                      }
+                      onClick={() =>
+                        toggleDate(
+                          k,
+                        )
+                      }
+                      className="flex h-9 items-center gap-2 rounded-lg border px-3 text-[12px] font-semibold transition-all focus-visible:outline-2 focus-visible:outline-ring"
+                      style={
+                        active
+                          ? {
+                              borderColor:
+                                tone,
+                              backgroundColor:
+                                tone,
+                              color:
+                                "#ffffff",
+                              boxShadow:
+                                `0 1px 2px ${tone}40`,
+                            }
+                          : {
+                              borderColor:
+                                `${tone}45`,
+                              backgroundColor:
+                                "#ffffff",
+                              color:
+                                tone,
+                            }
+                      }
+                    >
+                      <span
+                        className="h-1.5 w-1.5 rounded-full"
+                        style={{
+                          backgroundColor:
+                            tone,
+                        }}
+                        aria-hidden="true"
+                      />
+
+                      {label}
+                    </button>
+                  );
+                },
               )}
+
+              {/* FREE EVENTS */}
+              <button
+                type="button"
+                aria-pressed={
+                  f.entry ===
+                  "free"
+                }
+                onClick={() =>
+                  setF((x) => ({
+                    ...x,
+                    entry:
+                      x.entry ===
+                      "free"
+                        ? "any"
+                        : "free",
+                  }))
+                }
+                className="flex h-9 items-center gap-2 rounded-lg border px-3 text-[12px] font-semibold transition-all focus-visible:outline-2 focus-visible:outline-ring"
+                style={
+                  f.entry ===
+                  "free"
+                    ? {
+                        borderColor:
+                          "#14b8a6",
+                        backgroundColor:
+                          "#14b8a6",
+                        color:
+                          "#ffffff",
+                        boxShadow:
+                          "0 1px 2px #14b8a640",
+                      }
+                    : {
+                        borderColor:
+                          "#14b8a665",
+                        backgroundColor:
+                          "#ffffff",
+                        color:
+                          "#0f766e",
+                      }
+                }
+              >
+                <span
+                  className="h-1.5 w-1.5 rounded-full"
+                  style={{
+                    backgroundColor:
+                      "#14b8a6",
+                  }}
+                  aria-hidden="true"
+                />
+
+                Free events
+              </button>
             </div>
           </div>
         </div>
@@ -672,14 +658,15 @@ function Home() {
 
       {/* MAIN WORKSPACE */}
       <main className="relative min-h-0 flex-1">
-        <div className="mx-auto h-full w-full max-w-[1800px]">
-          <div className="relative flex h-full min-h-0">
-            {/* MAP */}
+        <div className="mx-auto h-full w-full max-w-[1800px] px-2 py-2 sm:px-3 lg:px-4">
+          <div className="relative flex h-full min-h-0 gap-3">
+
+            {/* MAP PANEL */}
             <div
-              className={`relative min-w-0 flex-1 ${
+              className={`relative min-h-0 min-w-0 flex-1 overflow-hidden rounded-2xl border border-border bg-muted shadow-sm ${
                 view === "map"
                   ? ""
-                  : "hidden"
+                  : "hidden lg:block"
               }`}
             >
               <ClientOnly
@@ -815,14 +802,183 @@ function Home() {
                     />
                   </div>
                 )}
+
+              {/* MOBILE VIEW SWITCHER */}
+              <div className="absolute right-3 top-3 z-[600] flex overflow-hidden rounded-lg border border-border bg-card shadow-md lg:hidden">
+                <button
+                  type="button"
+                  aria-pressed={
+                    view === "map"
+                  }
+                  onClick={() =>
+                    setView("map")
+                  }
+                  className={`flex h-9 items-center gap-1.5 px-3 text-sm font-medium ${
+                    view === "map"
+                      ? "bg-foreground text-background"
+                      : "bg-card hover:bg-muted"
+                  }`}
+                >
+                  <MapIcon
+                    size={15}
+                    aria-hidden="true"
+                  />
+                  Map
+                </button>
+
+                <button
+                  type="button"
+                  aria-pressed={
+                    view === "list"
+                  }
+                  onClick={() =>
+                    setView("list")
+                  }
+                  className={`flex h-9 items-center gap-1.5 px-3 text-sm font-medium ${
+                    view === "list"
+                      ? "bg-foreground text-background"
+                      : "bg-card hover:bg-muted"
+                  }`}
+                >
+                  <List
+                    size={15}
+                    aria-hidden="true"
+                  />
+                  List
+                </button>
+              </div>
             </div>
 
-            {/* DESKTOP EVENT LIST */}
-            {view === "map" && (
-              <aside
-                aria-label="Event list"
-                className="hidden w-[360px] shrink-0 overflow-y-auto border-l border-border bg-card lg:block"
-              >
+            {/* DESKTOP EVENT PANEL */}
+            <aside
+              aria-label="Event list"
+              className={`flex min-h-0 w-full shrink-0 flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-sm lg:w-[380px] xl:w-[420px] ${
+                view === "map"
+                  ? "hidden lg:flex"
+                  : "flex"
+              }`}
+            >
+              {/* CONTROLS INSIDE EVENT PANEL */}
+              <div className="shrink-0 border-b border-border bg-card">
+                <div className="flex items-center justify-between gap-2 px-3 py-2">
+                  <div className="min-w-0">
+                    <p
+                      className="truncate text-sm font-semibold"
+                      aria-live="polite"
+                    >
+                      {q.isLoading
+                        ? "Loading events…"
+                        : `${place} · ${placeCount} ${
+                            placeCount ===
+                            1
+                              ? "event"
+                              : "events"
+                          }`}
+                    </p>
+
+                    {f.subcategory && (
+                      <p className="truncate text-xs text-muted-foreground">
+                        {f.subcategory}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="flex shrink-0 items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setFilterOpen(
+                          true,
+                        )
+                      }
+                      className="flex h-9 items-center gap-1.5 rounded-md border border-border px-3 text-sm font-medium hover:bg-muted"
+                    >
+                      <SlidersHorizontal
+                        size={16}
+                        aria-hidden="true"
+                      />
+
+                      <span className="hidden sm:inline">
+                        Filters
+                      </span>
+
+                      {activeAdvanced >
+                        0 && (
+                        <span className="rounded-full bg-primary px-1.5 text-xs text-primary-foreground">
+                          {
+                            activeAdvanced
+                          }
+                        </span>
+                      )}
+                    </button>
+
+                    <div
+                      className="flex overflow-hidden rounded-md border border-border"
+                      role="group"
+                      aria-label="View"
+                    >
+                      <button
+                        type="button"
+                        aria-pressed={
+                          view ===
+                          "map"
+                        }
+                        onClick={() =>
+                          setView(
+                            "map",
+                          )
+                        }
+                        className={`flex h-9 items-center gap-1.5 px-2.5 text-sm font-medium ${
+                          view ===
+                          "map"
+                            ? "bg-foreground text-background"
+                            : "bg-card hover:bg-muted"
+                        }`}
+                      >
+                        <MapIcon
+                          size={15}
+                          aria-hidden="true"
+                        />
+
+                        <span className="hidden xl:inline">
+                          Map
+                        </span>
+                      </button>
+
+                      <button
+                        type="button"
+                        aria-pressed={
+                          view ===
+                          "list"
+                        }
+                        onClick={() =>
+                          setView(
+                            "list",
+                          )
+                        }
+                        className={`flex h-9 items-center gap-1.5 px-2.5 text-sm font-medium ${
+                          view ===
+                          "list"
+                            ? "bg-foreground text-background"
+                            : "bg-card hover:bg-muted"
+                        }`}
+                      >
+                        <List
+                          size={15}
+                          aria-hidden="true"
+                        />
+
+                        <span className="hidden xl:inline">
+                          List
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* EVENT LIST */}
+              <div className="min-h-0 flex-1 overflow-y-auto">
                 {q.isLoading && (
                   <p className="p-4 text-sm text-muted-foreground">
                     Loading
@@ -848,66 +1004,108 @@ function Home() {
                 )}
 
                 {list}
-              </aside>
-            )}
+              </div>
+            </aside>
 
-            {/* LIST VIEW */}
+            {/* MOBILE LIST VIEW */}
             {view === "list" && (
-              <div className="min-w-0 flex-1 overflow-y-auto">
-                <div className="mx-auto max-w-3xl">
-                  {q.isLoading && (
-                    <p className="p-6 text-center text-sm text-muted-foreground">
-                      Loading
-                      events…
-                    </p>
-                  )}
-
-                  {q.isError && (
-                    <div
-                      role="alert"
-                      className="p-6 text-center text-sm"
+              <div className="min-w-0 flex-1 overflow-y-auto rounded-2xl border border-border bg-card shadow-sm lg:hidden">
+                <div className="border-b border-border px-3 py-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <p
+                      className="min-w-0 truncate text-sm font-semibold"
+                      aria-live="polite"
                     >
-                      We couldn't
-                      load events.{" "}
+                      {q.isLoading
+                        ? "Loading events…"
+                        : `${place} · ${placeCount} ${
+                            placeCount ===
+                            1
+                              ? "event"
+                              : "events"
+                          }`}
+                    </p>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setFilterOpen(
+                          true,
+                        )
+                      }
+                      className="flex h-9 shrink-0 items-center gap-1.5 rounded-md border border-border px-3 text-sm font-medium hover:bg-muted"
+                    >
+                      <SlidersHorizontal
+                        size={16}
+                        aria-hidden="true"
+                      />
+
+                      Filters
+
+                      {activeAdvanced >
+                        0 && (
+                        <span className="rounded-full bg-primary px-1.5 text-xs text-primary-foreground">
+                          {
+                            activeAdvanced
+                          }
+                        </span>
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                {q.isLoading && (
+                  <p className="p-6 text-center text-sm text-muted-foreground">
+                    Loading
+                    events…
+                  </p>
+                )}
+
+                {q.isError && (
+                  <div
+                    role="alert"
+                    className="p-6 text-center text-sm"
+                  >
+                    We couldn't
+                    load events.{" "}
+                    <button
+                      type="button"
+                      className="text-primary underline"
+                      onClick={() =>
+                        void q.refetch()
+                      }
+                    >
+                      Retry
+                    </button>
+                  </div>
+                )}
+
+                {empty && (
+                  <div className="p-8 text-center text-sm">
+                    <p className="font-semibold">
+                      {all?.length
+                        ? "No events match these filters"
+                        : "No events yet"}
+                    </p>
+
+                    {filtersOn && (
                       <button
                         type="button"
-                        className="text-primary underline"
                         onClick={() =>
-                          void q.refetch()
+                          setF(
+                            DEFAULT_FILTERS,
+                          )
                         }
+                        className="mt-2 text-primary underline"
                       >
-                        Retry
+                        Clear
+                        filters
                       </button>
-                    </div>
-                  )}
+                    )}
+                  </div>
+                )}
 
-                  {empty && (
-                    <div className="p-8 text-center text-sm">
-                      <p className="font-semibold">
-                        {all?.length
-                          ? "No events match these filters"
-                          : "No events yet"}
-                      </p>
-
-                      {filtersOn && (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setF(
-                              DEFAULT_FILTERS,
-                            )
-                          }
-                          className="mt-2 text-primary underline"
-                        >
-                          Clear
-                          filters
-                        </button>
-                      )}
-                    </div>
-                  )}
-
-                  {list}
-                </div>
+                {list}
               </div>
             )}
           </div>
