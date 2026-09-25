@@ -3,7 +3,6 @@ import {
   useNavigate,
   ClientOnly,
 } from "@tanstack/react-router";
-
 import {
   lazy,
   Suspense,
@@ -11,22 +10,16 @@ import {
   useEffect,
   useState,
 } from "react";
-
 import { z } from "zod";
-
 import { ImagePlus } from "lucide-react";
-
 import { SiteHeader } from "@/components/SiteHeader";
-
 import { CategoryBadge } from "@/components/EventViews";
-
 import {
   CATEGORIES,
   CATEGORY_META,
   DISTRICTS,
   SUBCATEGORIES,
   addEvent,
-  findEventImage,
   fmtDate,
   fmtTime,
   shrinkImage,
@@ -35,7 +28,6 @@ import {
   type EntryStatus,
   type NewEvent,
 } from "@/lib/events";
-
 import { districtAt } from "@/lib/geo";
 
 const EventMap = lazy(() => import("@/components/EventMap"));
@@ -122,21 +114,25 @@ const STEPS = [
 function normUrl(s: string): string {
   const t = s.trim();
 
-  return !t
-    ? ""
-    : /^https?:\/\//i.test(t)
-      ? t.replace(/^http:/i, "https:")
-      : "https://" + t;
+  if (!t) {
+    return "";
+  }
+
+  return /^https?:\/\//i.test(t)
+    ? t.replace(/^http:/i, "https:")
+    : `https://${t}`;
 }
 
 function normInsta(s: string): string {
   const t = s.trim().replace(/^@/, "");
 
-  return !t
-    ? ""
-    : /^https?:\/\//i.test(t)
-      ? normUrl(t)
-      : `https://instagram.com/${t}`;
+  if (!t) {
+    return "";
+  }
+
+  return /^https?:\/\//i.test(t)
+    ? normUrl(t)
+    : `https://instagram.com/${t}`;
 }
 
 const urlSchema = z
@@ -172,10 +168,8 @@ function splitTime(time: string) {
 
   const [h, m] = time.split(":");
   const hour24 = Number(h);
-
   const period: "AM" | "PM" =
     hour24 >= 12 ? "PM" : "AM";
-
   const hour12 = hour24 % 12 || 12;
 
   return {
@@ -190,12 +184,16 @@ function to24Hour(
   minute: string,
   period: "AM" | "PM",
 ) {
-  if (!hour || !minute) return "";
+  if (!hour || !minute) {
+    return "";
+  }
 
   let h = Number(hour);
 
   if (period === "AM") {
-    if (h === 12) h = 0;
+    if (h === 12) {
+      h = 0;
+    }
   } else if (h !== 12) {
     h += 12;
   }
@@ -215,12 +213,10 @@ function TimePicker({
   const initial = splitTime(value);
 
   const [hour, setHour] = useState(initial.hour);
-  const [minute, setMinute] = useState(
-    initial.minute,
+  const [minute, setMinute] = useState(initial.minute);
+  const [period, setPeriod] = useState<"AM" | "PM">(
+    initial.period,
   );
-  const [period, setPeriod] = useState<
-    "AM" | "PM"
-  >(initial.period);
 
   useEffect(() => {
     const next = splitTime(value);
@@ -270,20 +266,22 @@ function TimePicker({
   const handleHourChange = (
     e: React.ChangeEvent<HTMLInputElement>,
   ) => {
-    let next = e.target.value;
+    const next = e.target.value;
 
-    // Allow empty while editing.
     if (next === "") {
       commit("", minute, period);
       return;
     }
 
-    // Numbers only.
-    if (!/^\d{1,2}$/.test(next)) return;
+    if (!/^\d{1,2}$/.test(next)) {
+      return;
+    }
 
     const n = Number(next);
 
-    if (n < 1 || n > 12) return;
+    if (n < 1 || n > 12) {
+      return;
+    }
 
     commit(next, minute, period);
   };
@@ -291,34 +289,35 @@ function TimePicker({
   const handleMinuteChange = (
     e: React.ChangeEvent<HTMLInputElement>,
   ) => {
-    let next = e.target.value;
+    const next = e.target.value;
 
-    // Allow empty while editing.
     if (next === "") {
       commit(hour, "", period);
       return;
     }
 
-    // Numbers only.
-    if (!/^\d{1,2}$/.test(next)) return;
+    if (!/^\d{1,2}$/.test(next)) {
+      return;
+    }
 
     const n = Number(next);
 
-    if (n < 0 || n > 59) return;
+    if (n < 0 || n > 59) {
+      return;
+    }
 
     commit(hour, next, period);
   };
 
   const handleHourBlur = () => {
-    if (!hour) return;
+    if (!hour) {
+      return;
+    }
 
     const h = Number(hour);
 
     if (h >= 1 && h <= 12) {
-      const formatted = String(h).padStart(
-        2,
-        "0",
-      );
+      const formatted = String(h).padStart(2, "0");
 
       setHour(formatted);
 
@@ -335,15 +334,14 @@ function TimePicker({
   };
 
   const handleMinuteBlur = () => {
-    if (!minute) return;
+    if (!minute) {
+      return;
+    }
 
     const m = Number(minute);
 
     if (m >= 0 && m <= 59) {
-      const formatted = String(m).padStart(
-        2,
-        "0",
-      );
+      const formatted = String(m).padStart(2, "0");
 
       setMinute(formatted);
 
@@ -362,8 +360,7 @@ function TimePicker({
   const handlePeriodChange = (
     e: React.ChangeEvent<HTMLSelectElement>,
   ) => {
-    const next =
-      e.target.value as "AM" | "PM";
+    const next = e.target.value as "AM" | "PM";
 
     setPeriod(next);
 
@@ -394,9 +391,7 @@ function TimePicker({
         className="h-11 w-full min-w-0 rounded-md border border-input bg-background px-2 text-center text-sm focus-visible:outline-2 focus-visible:outline-ring"
       />
 
-      <span className="shrink-0 text-lg">
-        :
-      </span>
+      <span className="shrink-0 text-lg">:</span>
 
       <input
         type="number"
@@ -515,8 +510,7 @@ function validate(
         "Poster must be a JPG, PNG or WebP image";
     } else if (
       d.poster &&
-      d.poster.size >
-        10 * 1024 * 1024
+      d.poster.size > 10 * 1024 * 1024
     ) {
       e["poster"] =
         "Poster must be under 10 MB";
@@ -872,10 +866,18 @@ function Submit() {
 
     try {
       /*
+       * IMPORTANT:
+       *
        * Manual poster always has priority.
        *
-       * If the user does not upload a poster,
-       * search automatically using the event details.
+       * If the user uploaded a poster, upload it first.
+       *
+       * If there is no poster, imageUrl remains null.
+       *
+       * We DO NOT call findEventImage() here.
+       *
+       * Automatic image discovery must happen asynchronously
+       * in the backend after the event is created.
        */
 
       const imageUrl = d.poster
@@ -884,20 +886,7 @@ function Submit() {
               d.poster,
             ),
           )
-        : await findEventImage({
-            title:
-              d.title.trim(),
-            category:
-              d.category,
-            subcategory:
-              d.subcategory.trim(),
-            venue:
-              d.venue.trim(),
-            locality:
-              d.locality.trim(),
-            district:
-              d.district,
-          });
+        : null;
 
       const id =
         d.title
@@ -974,13 +963,37 @@ function Submit() {
           normUrl(
             d.otherUrl,
           ) || null,
+
+        /*
+         * Manual image only.
+         *
+         * Automatic image discovery happens later in the
+         * backend and updates the event row asynchronously.
+         */
         imageUrl,
+
+        /*
+         * Automatic image candidates are discovered after
+         * the event is created.
+         */
+        imageCandidates: [],
       };
 
-      await addEvent(
-        ev,
-      );
+      /*
+       * Create the event immediately.
+       *
+       * There is intentionally NO await findEventImage()
+       * or other image-search operation here.
+       */
+      await addEvent(ev);
 
+      /*
+       * Once inserted, navigate immediately to the event page.
+       *
+       * The page can initially show its normal fallback.
+       * When the backend later updates image_url/image_candidates,
+       * the frontend can display the discovered image.
+       */
       await nav({
         to: "/event/$id",
         params: {
@@ -1051,8 +1064,7 @@ function Submit() {
                   onChange={(e) =>
                     set({
                       title:
-                        e.target
-                          .value,
+                        e.target.value,
                     })
                   }
                   autoComplete="off"
@@ -1139,8 +1151,7 @@ function Submit() {
                     onChange={(e) =>
                       set({
                         subcategory:
-                          e.target
-                            .value,
+                          e.target.value,
                       })
                     }
                     placeholder="e.g. Book fair, Blood donation camp"
@@ -1163,8 +1174,7 @@ function Submit() {
                     onChange={(e) =>
                       set({
                         subcategory:
-                          e.target
-                            .value,
+                          e.target.value,
                       })
                     }
                   >
@@ -1176,6 +1186,7 @@ function Submit() {
                       (s) => (
                         <option
                           key={s}
+                          value={s}
                         >
                           {s}
                         </option>
@@ -1203,8 +1214,7 @@ function Submit() {
                   onChange={(e) =>
                     set({
                       description:
-                        e.target
-                          .value,
+                        e.target.value,
                     })
                   }
                 />
@@ -1267,8 +1277,7 @@ function Submit() {
                     onChange={(e) =>
                       set({
                         date:
-                          e.target
-                            .value,
+                          e.target.value,
                       })
                     }
                   />
@@ -1293,8 +1302,7 @@ function Submit() {
                     onChange={(e) =>
                       set({
                         endDate:
-                          e.target
-                            .value,
+                          e.target.value,
                       })
                     }
                   />
@@ -1361,8 +1369,7 @@ function Submit() {
                   onChange={(e) =>
                     set({
                       venue:
-                        e.target
-                          .value,
+                        e.target.value,
                     })
                   }
                   placeholder="e.g. Municipal Stadium"
@@ -1387,8 +1394,7 @@ function Submit() {
                     onChange={(e) =>
                       set({
                         locality:
-                          e.target
-                            .value,
+                          e.target.value,
                       })
                     }
                     placeholder="e.g. Payyanur"
@@ -1411,8 +1417,7 @@ function Submit() {
                     onChange={(e) =>
                       set({
                         district:
-                          e.target
-                            .value,
+                          e.target.value,
                       })
                     }
                   >
@@ -1424,6 +1429,7 @@ function Submit() {
                       (x) => (
                         <option
                           key={x}
+                          value={x}
                         >
                           {x}
                         </option>
@@ -1557,8 +1563,7 @@ function Submit() {
                     maxLength={60}
                     onChange={(e) =>
                       set({
-                        fee: e
-                          .target
+                        fee: e.target
                           .value,
                       })
                     }
@@ -1584,8 +1589,7 @@ function Submit() {
                   onChange={(e) =>
                     set({
                       ticketUrl:
-                        e.target
-                          .value,
+                        e.target.value,
                     })
                   }
                   placeholder="https://"
@@ -1608,8 +1612,7 @@ function Submit() {
                   onChange={(e) =>
                     set({
                       instagram:
-                        e.target
-                          .value,
+                        e.target.value,
                     })
                   }
                   placeholder="@handle or link"
@@ -1631,8 +1634,7 @@ function Submit() {
                   onChange={(e) =>
                     set({
                       website:
-                        e.target
-                          .value,
+                        e.target.value,
                     })
                   }
                   placeholder="https://"
@@ -1654,8 +1656,7 @@ function Submit() {
                   onChange={(e) =>
                     set({
                       otherUrl:
-                        e.target
-                          .value,
+                        e.target.value,
                     })
                   }
                   placeholder="https://"
@@ -1678,8 +1679,7 @@ function Submit() {
                   onChange={(e) =>
                     set({
                       contact:
-                        e.target
-                          .value,
+                        e.target.value,
                     })
                   }
                   placeholder="Phone or email"

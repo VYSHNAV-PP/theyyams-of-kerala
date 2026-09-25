@@ -39,6 +39,7 @@ import {
 } from "@/components/EventViews";
 
 import {
+  CATEGORY_META,
   CONFIRMED_MIN,
   DOWNVOTE_REASONS,
   REPORT_REASONS,
@@ -221,6 +222,105 @@ function feedbackDate(
 }
 
 /* ============================================================
+   EVENT POSTER
+   ============================================================ */
+
+function EventPoster({
+  e,
+}: {
+  e: KEvent;
+}) {
+  const category =
+    CATEGORY_META[e.category];
+
+  const candidates =
+    Array.from(
+      new Set(
+        [
+          ...(e.imageCandidates ?? []),
+          ...(e.imageUrl
+            ? [e.imageUrl]
+            : []),
+        ].filter(
+          (url): url is string =>
+            typeof url === "string" &&
+            url.trim().length > 0,
+        ),
+      ),
+    );
+
+  const candidateKey =
+    candidates.join("|");
+
+  const [index, setIndex] =
+    useState(0);
+
+  const [failed, setFailed] =
+    useState(false);
+
+  /*
+   * Reset image selection whenever
+   * the backend gives us a new set
+   * of candidates.
+   */
+  useEffect(() => {
+    setIndex(0);
+    setFailed(false);
+  }, [candidateKey]);
+
+  const currentUrl =
+    candidates[index];
+
+  /*
+   * No candidates or every
+   * candidate failed.
+   */
+  if (!currentUrl || failed) {
+    return (
+      <div
+        className="mb-4 flex min-h-56 w-full items-center justify-center overflow-hidden rounded-lg border border-border"
+        style={{
+          color: category.hex,
+          backgroundColor: `${category.hex}12`,
+        }}
+        aria-label="No event image available"
+      >
+        <span
+          aria-hidden="true"
+          className="text-6xl"
+        >
+          {category.icon}
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mb-4 overflow-hidden rounded-lg border border-border">
+      <img
+        src={currentUrl}
+        alt={`Poster for ${e.title}`}
+        loading="lazy"
+        className="max-h-96 w-full object-cover"
+        onError={() => {
+          if (
+            index + 1 <
+            candidates.length
+          ) {
+            setIndex(
+              (current) =>
+                current + 1,
+            );
+          } else {
+            setFailed(true);
+          }
+        }}
+      />
+    </div>
+  );
+}
+
+/* ============================================================
    EVENT PAGE
    ============================================================ */
 
@@ -297,6 +397,88 @@ function EventPage() {
       hasReported(id),
     );
   }, [id]);
+
+  /* ==========================================================
+     ASYNC IMAGE SEARCH POLLING
+     ========================================================== */
+
+  useEffect(() => {
+    /*
+     * The event is created first.
+     *
+     * The backend image search happens afterwards.
+     * While waiting, periodically refetch the event so
+     * the newly discovered image can appear automatically.
+     *
+     * Poll for a maximum of 30 seconds.
+     */
+
+    if (
+      !q.data ||
+      q.data.imageUrl
+    ) {
+      return;
+    }
+
+    let stopped = false;
+
+    const startedAt =
+      Date.now();
+
+    const interval =
+      window.setInterval(
+        async () => {
+          if (stopped) {
+            return;
+          }
+
+          if (
+            Date.now() -
+              startedAt >=
+            30_000
+          ) {
+            window.clearInterval(
+              interval,
+            );
+
+            return;
+          }
+
+          try {
+            await q.refetch();
+
+            /*
+             * If the backend has now
+             * supplied an image, stop polling.
+             */
+            if (
+              q.data?.imageUrl
+            ) {
+              window.clearInterval(
+                interval,
+              );
+            }
+          } catch {
+            /*
+             * Ignore temporary polling
+             * failures. Normal query
+             * error handling remains intact.
+             */
+          }
+        },
+        3_000,
+      );
+
+    return () => {
+      stopped = true;
+      window.clearInterval(
+        interval,
+      );
+    };
+  }, [
+    id,
+    q.data?.imageUrl,
+  ]);
 
   /* ==========================================================
      LOADING
@@ -436,14 +618,7 @@ function EventPage() {
          POSTER
          ====================================================== */}
 
-      {e.imageUrl && (
-        <img
-          src={e.imageUrl}
-          alt={`Poster for ${e.title}`}
-          loading="lazy"
-          className="mb-4 max-h-96 w-full rounded-lg border border-border object-cover"
-        />
-      )}
+      <EventPoster e={e} />
 
       {/* ======================================================
          BADGES

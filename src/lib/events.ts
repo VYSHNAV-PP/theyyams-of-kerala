@@ -66,7 +66,26 @@ export type KEvent = {
   instagram: string | null;
   website: string | null;
   otherUrl: string | null;
+
+  /*
+   * Primary/current image URL.
+   *
+   * For manually uploaded posters this is the uploaded
+   * Supabase Storage URL.
+   *
+   * For automatically discovered images this can be the
+   * first/best candidate.
+   */
   imageUrl: string | null;
+
+  /*
+   * All automatically discovered image candidates,
+   * ordered from best to worst.
+   *
+   * The frontend can try the next URL when one image
+   * fails to load.
+   */
+  imageCandidates: string[];
 
   upvotes: number;
   downvotes: number;
@@ -148,18 +167,56 @@ export async function fetchEventFeedback(
    ============================================================ */
 
 const COLS =
-  "id,title,category,subcategory,description,date,end_date,start_time,end_time,starts_at,ends_at,venue,locality,district,lat,lng,entry_status,entry_fee,contact,ticket_url,instagram,website,other_url,image_url,upvotes,downvotes,reports";
+  "id,title,category,subcategory,description,date,end_date,start_time,end_time,starts_at,ends_at,venue,locality,district,lat,lng,entry_status,entry_fee,contact,ticket_url,instagram,website,other_url,image_url,image_candidates,upvotes,downvotes,reports";
 
 type DbEvent = Omit<
   EventRow,
   "time" | "link" | "created_at" | "status"
 >;
 
+/**
+ * Convert a database event row into the application event shape.
+ */
 function toEvent(
   r: DbEvent,
 ): KEvent {
   const category =
     asCategory(r.category);
+
+  /*
+   * Older events may have NULL / missing image_candidates
+   * while the new column is being introduced.
+   *
+   * In that case we fall back to image_url.
+   */
+  const rawCandidates =
+    Array.isArray(
+      (r as any).image_candidates,
+    )
+      ? ((r as any).image_candidates as unknown[])
+          .filter(
+            (value): value is string =>
+              typeof value === "string" &&
+              value.trim().length > 0,
+          )
+          .map((value) =>
+            value.trim(),
+          )
+      : [];
+
+  const imageCandidates =
+    Array.from(
+      new Set(
+        [
+          ...rawCandidates,
+          r.image_url,
+        ].filter(
+          (value): value is string =>
+            typeof value === "string" &&
+            value.trim().length > 0,
+        ),
+      ),
+    );
 
   return {
     id: r.id,
@@ -227,6 +284,8 @@ function toEvent(
 
     imageUrl:
       r.image_url,
+
+    imageCandidates,
 
     upvotes:
       r.upvotes,
@@ -334,6 +393,7 @@ export type NewEvent = Pick<
   | "website"
   | "otherUrl"
   | "imageUrl"
+  | "imageCandidates"
 >;
 
 export async function addEvent(
@@ -391,9 +451,13 @@ export async function addEvent(
         e.website,
       other_url:
         e.otherUrl,
+
       image_url:
         e.imageUrl,
-    });
+
+      image_candidates:
+        e.imageCandidates,
+    } as any);
 
   if (error) throw error;
 }
@@ -402,6 +466,25 @@ export async function addEvent(
    AUTOMATIC EVENT IMAGE
    ============================================================ */
 
+/**
+ * Search for automatic event images.
+ *
+ * The Edge Function returns multiple ranked image URLs.
+ *
+ * Example:
+ *
+ * {
+ *   imageUrl: "https://example.com/best.jpg",
+ *   imageUrls: [
+ *     "https://example.com/best.jpg",
+ *     "https://example.com/second.jpg",
+ *     "https://example.com/third.jpg"
+ *   ]
+ * }
+ *
+ * We keep `findEventImage()` as the function name so the rest
+ * of the application can continue using the same API.
+ */
 export async function findEventImage(
   e: Pick<
     NewEvent,
@@ -412,7 +495,10 @@ export async function findEventImage(
     | "locality"
     | "district"
   >,
-): Promise<string | null> {
+): Promise<{
+  imageUrl: string | null;
+  imageCandidates: string[];
+}> {
   try {
     const {
       data,
@@ -449,20 +535,79 @@ export async function findEventImage(
         error,
       );
 
-      return null;
+      return {
+        imageUrl: null,
+        imageCandidates: [],
+      };
     }
 
-    return (
-      data?.imageUrl ??
-      null
+    /*
+     * New Edge Function response:
+     *
+     * imageUrls: string[]
+     *
+     * We also accept the old `imageUrl` response so
+     * existing deployments do not immediately break.
+     */
+    const candidates = Array.from(
+      new Set(
+        (
+          Array.isArray(
+            data?.imageUrls,
+          )
+            ? data.imageUrls
+            : []
+        )
+          .filter(
+            (value: unknown): value is string =>
+              typeof value === "string" &&
+              value.trim().length > 0,
+          )
+          .map(
+            (value: string) =>
+              value.trim(),
+          ),
+      ),
     );
+
+    const legacyImage =
+      typeof data?.imageUrl ===
+        "string" &&
+      data.imageUrl.trim()
+        ? data.imageUrl.trim()
+        : null;
+
+    const imageCandidates =
+      Array.from(
+        new Set(
+          [
+            ...candidates,
+            legacyImage,
+          ].filter(
+            (value): value is string =>
+              typeof value === "string" &&
+              value.length > 0,
+          ),
+        ),
+      );
+
+    return {
+      imageUrl:
+        imageCandidates[0] ??
+        null,
+
+      imageCandidates,
+    };
   } catch (error) {
     console.warn(
       "Automatic event image search failed:",
       error,
     );
 
-    return null;
+    return {
+      imageUrl: null,
+      imageCandidates: [],
+    };
   }
 }
 
@@ -592,23 +737,6 @@ function voterId(): string {
 /* ============================================================
    LOCAL VOTE STATE
    ============================================================ */
-
-/*
- * There is exactly one local vote state per event:
- *
- *   ke-vote-EVENT_ID = "up"
- *   ke-vote-EVENT_ID = "down"
- *
- * This prevents:
- *
- *   up -> up
- *   up -> down
- *   down -> down
- *   down -> up
- *
- * Existing users who still have the old keys are also
- * recognized so their previous vote is not lost.
- */
 
 export type LocalVote =
   | "up"
@@ -977,7 +1105,8 @@ const dfmt =
     {
       weekday:
         "short",
-      day: "numeric",
+      day:
+        "numeric",
       month:
         "short",
       timeZone:
@@ -1186,9 +1315,11 @@ export function dateRange(
         dow === 0
           ? t - DAY
           : t +
-            ((6 -
+            ((
+              6 -
               dow +
-              7) %
+              7
+            ) %
               7) *
               DAY;
 

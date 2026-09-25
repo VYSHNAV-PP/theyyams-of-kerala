@@ -39,6 +39,7 @@ import {
   type KEvent,
 } from "@/lib/events";
 import { KERALA_BOUNDS } from "@/lib/geo";
+import { supabase } from "@/integrations/supabase/client";
 
 const EventMap = lazy(
   () => import("@/components/EventMap"),
@@ -174,6 +175,39 @@ function Home() {
     staleTime: 30_000,
     refetchInterval: 60_000,
   });
+
+  /*
+   * Listen for database updates.
+   *
+   * The asynchronous image-search Edge Function
+   * updates image_url / image_candidates after the
+   * event has already been created.
+   *
+   * When that UPDATE arrives, refetch immediately
+   * instead of waiting for the 60-second interval.
+   */
+  useEffect(() => {
+    const channel = supabase
+      .channel("events-image-updates")
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "events",
+        },
+        () => {
+          void q.refetch();
+        },
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(
+        channel,
+      );
+    };
+  }, [q.refetch]);
 
   const all = q.data;
 

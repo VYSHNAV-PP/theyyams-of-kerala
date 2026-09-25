@@ -8,6 +8,7 @@ import {
   Minus,
   Plus,
   RotateCcw,
+  Search,
 } from "lucide-react";
 import { CATEGORY_META, type KEvent } from "@/lib/events";
 import { KERALA_BOUNDS, loadDistrictGeo } from "@/lib/geo";
@@ -51,6 +52,13 @@ type Props = {
 
   compact?: boolean;
   className?: string;
+};
+
+type SearchResult = {
+  place_id: number;
+  display_name: string;
+  lat: string;
+  lon: string;
 };
 
 function pinIcon(
@@ -182,9 +190,20 @@ export default function EventMap(p: Props) {
   const props = useRef(p);
   props.current = p;
 
+  const placeSearchTimer = useRef<number | null>(null);
+
   const [note, setNote] = useState("");
   const [full, setFull] = useState(false);
   const [canFull, setCanFull] = useState(false);
+
+  const [placeQuery, setPlaceQuery] = useState("");
+  const [placeResults, setPlaceResults] = useState<
+    SearchResult[]
+  >([]);
+  const [placeSearching, setPlaceSearching] =
+    useState(false);
+  const [placeSearchOpen, setPlaceSearchOpen] =
+    useState(false);
 
   const draw = useCallback(() => {
     const m = map.current;
@@ -397,6 +416,169 @@ export default function EventMap(p: Props) {
       marker.addTo(g);
     }
   }, []);
+
+  /*
+   * Search places using OpenStreetMap Nominatim.
+   */
+  async function searchPlaces(
+    query: string,
+  ) {
+    const trimmed = query.trim();
+
+    if (trimmed.length < 2) {
+      setPlaceResults([]);
+      setPlaceSearchOpen(false);
+      return;
+    }
+
+    setPlaceSearching(true);
+
+    try {
+      const url =
+        "https://nominatim.openstreetmap.org/search?" +
+        new URLSearchParams({
+          q: `${trimmed}, Kerala, India`,
+          format: "jsonv2",
+          limit: "8",
+          countrycodes: "in",
+          addressdetails: "1",
+        }).toString();
+
+      const response = await fetch(url, {
+        headers: {
+          Accept: "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(
+          "Place search failed",
+        );
+      }
+
+      const data =
+        (await response.json()) as SearchResult[];
+
+      /*
+       * Keep only results that fall inside
+       * the Kerala bounding box.
+       */
+      const [
+        [south, west],
+        [north, east],
+      ] = KERALA_BOUNDS;
+
+      const keralaResults =
+        data.filter((result) => {
+          const lat = Number(result.lat);
+          const lng = Number(result.lon);
+
+          return (
+            Number.isFinite(lat) &&
+            Number.isFinite(lng) &&
+            lat >= south &&
+            lat <= north &&
+            lng >= west &&
+            lng <= east
+          );
+        });
+
+      setPlaceResults(
+        keralaResults.slice(0, 5),
+      );
+
+      setPlaceSearchOpen(
+        keralaResults.length > 0,
+      );
+    } catch {
+      setPlaceResults([]);
+      setPlaceSearchOpen(false);
+    } finally {
+      setPlaceSearching(false);
+    }
+  }
+
+  /*
+   * Debounced place search.
+   */
+  function handlePlaceQueryChange(
+    value: string,
+  ) {
+    setPlaceQuery(value);
+
+    if (placeSearchTimer.current) {
+      window.clearTimeout(
+        placeSearchTimer.current,
+      );
+    }
+
+    if (value.trim().length < 2) {
+      setPlaceResults([]);
+      setPlaceSearchOpen(false);
+      return;
+    }
+
+    placeSearchTimer.current =
+      window.setTimeout(() => {
+        void searchPlaces(value);
+      }, 500);
+  }
+
+  /*
+   * Select a search result.
+   */
+  function selectPlace(
+    result: SearchResult,
+  ) {
+    const lat = Number(result.lat);
+    const lng = Number(result.lon);
+
+    if (
+      !Number.isFinite(lat) ||
+      !Number.isFinite(lng)
+    ) {
+      return;
+    }
+
+    const m = map.current;
+
+    if (!m) return;
+
+    /*
+     * Set the event location.
+     */
+    props.current.onPick?.(
+      lat,
+      lng,
+    );
+
+    /*
+     * Move the map to the selected place.
+     */
+    m.flyTo(
+      [lat, lng],
+      Math.max(
+        m.getZoom(),
+        15,
+      ),
+      {
+        duration: 0.7,
+      },
+    );
+
+    /*
+     * Keep the search field compact by
+     * showing the place name.
+     */
+    setPlaceQuery(
+      result.display_name
+        .split(",")[0] ??
+        result.display_name,
+    );
+
+    setPlaceResults([]);
+    setPlaceSearchOpen(false);
+  }
 
   /*
    * Initialise map.
@@ -673,6 +855,17 @@ export default function EventMap(p: Props) {
         "fullscreenchange",
         onFullscreen,
       );
+
+      if (
+        placeSearchTimer.current
+      ) {
+        window.clearTimeout(
+          placeSearchTimer.current,
+        );
+
+        placeSearchTimer.current =
+          null;
+      }
 
       resizeObserver.disconnect();
 
@@ -962,6 +1155,102 @@ export default function EventMap(p: Props) {
         role="application"
         aria-label="Interactive map of events in Kerala"
       />
+
+      {/* Place search — shown only while publishing/picking a location. */}
+      {p.onPick && (
+        <div className="absolute left-3 top-3 z-[500] w-[min(380px,calc(100%-6rem))]">
+          <div className="relative">
+            <div className="flex items-center rounded-md border border-border bg-card shadow-sm">
+              <Search
+                size={17}
+                className="ml-3 shrink-0 text-muted-foreground"
+              />
+
+              <input
+                type="text"
+                value={placeQuery}
+                onChange={(event) =>
+                  handlePlaceQueryChange(
+                    event.target.value,
+                  )
+                }
+                onFocus={() => {
+                  if (
+                    placeResults.length >
+                    0
+                  ) {
+                    setPlaceSearchOpen(
+                      true,
+                    );
+                  }
+                }}
+                onKeyDown={(event) => {
+                  if (
+                    event.key ===
+                    "Escape"
+                  ) {
+                    setPlaceSearchOpen(
+                      false,
+                    );
+                  }
+                }}
+                placeholder="Search a place or venue…"
+                className="h-11 min-w-0 flex-1 bg-transparent px-3 text-sm text-foreground outline-none placeholder:text-muted-foreground"
+                aria-label="Search for event location"
+              />
+
+              {placeSearching && (
+                <div className="mr-3 h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-muted-foreground/30 border-t-foreground" />
+              )}
+            </div>
+
+            {placeSearchOpen &&
+              placeResults.length >
+                0 && (
+                <div className="absolute left-0 right-0 top-[calc(100%+6px)] overflow-hidden rounded-md border border-border bg-card shadow-lg">
+                  {placeResults.map(
+                    (result) => {
+                      const parts =
+                        result.display_name
+                          .split(",");
+
+                      const title =
+                        parts
+                          .slice(0, 2)
+                          .join(",")
+                          .trim();
+
+                      return (
+                        <button
+                          key={
+                            result.place_id
+                          }
+                          type="button"
+                          className="block w-full border-b border-border px-3 py-2.5 text-left last:border-b-0 hover:bg-muted focus-visible:bg-muted focus-visible:outline-none"
+                          onClick={() =>
+                            selectPlace(
+                              result,
+                            )
+                          }
+                        >
+                          <div className="text-sm font-medium text-foreground">
+                            {title}
+                          </div>
+
+                          <div className="mt-0.5 truncate text-xs text-muted-foreground">
+                            {
+                              result.display_name
+                            }
+                          </div>
+                        </button>
+                      );
+                    },
+                  )}
+                </div>
+              )}
+          </div>
+        </div>
+      )}
 
       {/* Map controls. */}
       <div

@@ -6,6 +6,7 @@ import {
   Ticket,
   X,
 } from "lucide-react";
+import { useEffect, useState } from "react";
 import {
   CATEGORY_META,
   STATUS_LABEL,
@@ -26,15 +27,6 @@ export function Chip({
   children: React.ReactNode;
   tone?: string;
 }) {
-  /*
-   * Category chips:
-   * - inactive: normal white chip
-   * - active: solid category colour
-   *
-   * Quick filters:
-   * - inactive: lightly tinted background
-   * - active: solid colour
-   */
   const getTint = (hex: string) => {
     const value = hex.replace("#", "");
 
@@ -42,31 +34,20 @@ export function Chip({
       return undefined;
     }
 
-    const r = parseInt(
-      value.slice(0, 2),
-      16,
-    );
-    const g = parseInt(
-      value.slice(2, 4),
-      16,
-    );
-    const b = parseInt(
-      value.slice(4, 6),
-      16,
-    );
+    const r = parseInt(value.slice(0, 2), 16);
+    const g = parseInt(value.slice(2, 4), 16);
+    const b = parseInt(value.slice(4, 6), 16);
 
     return `rgba(${r}, ${g}, ${b}, 0.10)`;
   };
 
-  const inactiveQuickStyle =
-    tone
-      ? {
-          backgroundColor:
-            getTint(tone),
-          borderColor: `${tone}45`,
-          color: tone,
-        }
-      : undefined;
+  const inactiveQuickStyle = tone
+    ? {
+        backgroundColor: getTint(tone),
+        borderColor: `${tone}45`,
+        color: tone,
+      }
+    : undefined;
 
   const activeStyle =
     active && tone
@@ -82,11 +63,7 @@ export function Chip({
       type="button"
       aria-pressed={!!active}
       onClick={onClick}
-      style={
-        active
-          ? activeStyle
-          : inactiveQuickStyle
-      }
+      style={active ? activeStyle : inactiveQuickStyle}
       className={`inline-flex h-10 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-4 text-[13px] font-semibold transition-all focus-visible:outline-2 focus-visible:outline-ring ${
         active
           ? tone
@@ -105,13 +82,9 @@ export function Chip({
 export function CategoryBadge({
   e,
 }: {
-  e: Pick<
-    KEvent,
-    "category" | "subcategory"
-  >;
+  e: Pick<KEvent, "category" | "subcategory">;
 }) {
-  const m =
-    CATEGORY_META[e.category];
+  const m = CATEGORY_META[e.category];
 
   return (
     <span
@@ -122,13 +95,10 @@ export function CategoryBadge({
         backgroundColor: `${m.hex}0d`,
       }}
     >
-      <span aria-hidden="true">
-        {m.icon}
-      </span>
+      <span aria-hidden="true">{m.icon}</span>
 
       <span className="truncate">
-        {e.category} ·{" "}
-        {e.subcategory}
+        {e.category} · {e.subcategory}
       </span>
     </span>
   );
@@ -170,6 +140,119 @@ export const confirmText = (
   n: number,
 ) =>
   `${n} ${n === 1 ? "person" : "people"} confirmed this event`;
+
+/* ============================================================
+   EVENT IMAGE
+   ============================================================ */
+
+export function EventImage({
+  urls,
+  alt,
+  className,
+  fallback,
+}: {
+  urls: string[];
+  alt: string;
+  className?: string;
+  fallback: React.ReactNode;
+}) {
+  const candidates = Array.from(
+    new Set(
+      urls.filter(
+        (url): url is string =>
+          typeof url === "string" &&
+          url.trim().length > 0,
+      ),
+    ),
+  );
+
+  const candidateKey = candidates.join("|");
+
+  const [index, setIndex] = useState(0);
+  const [failed, setFailed] = useState(false);
+
+  /*
+   * When Supabase sends new image_candidates,
+   * start again from the first candidate.
+   */
+  useEffect(() => {
+    setIndex(0);
+    setFailed(false);
+  }, [candidateKey]);
+
+  const currentUrl = candidates[index];
+
+  /*
+   * No image candidates or all candidates failed.
+   */
+  if (!currentUrl || failed) {
+    return <>{fallback}</>;
+  }
+
+  return (
+    <img
+      src={currentUrl}
+      alt={alt}
+      className={className}
+      loading="lazy"
+      onError={() => {
+        if (index + 1 < candidates.length) {
+          setIndex((current) => current + 1);
+        } else {
+          setFailed(true);
+        }
+      }}
+    />
+  );
+}
+
+/* ============================================================
+   EVENT THUMBNAIL
+   ============================================================ */
+
+function EventThumbnail({
+  e,
+  color,
+  icon,
+}: {
+  e: KEvent;
+  color: string;
+  icon: React.ReactNode;
+}) {
+  const candidates = Array.from(
+    new Set([
+      ...(e.imageCandidates ?? []),
+      ...(e.imageUrl ? [e.imageUrl] : []),
+    ].filter(
+      (url): url is string =>
+        typeof url === "string" &&
+        url.trim().length > 0,
+    )),
+  );
+
+  return (
+    <EventImage
+      urls={candidates}
+      alt=""
+      className="h-full w-full object-cover"
+      fallback={
+        <span
+          className="flex h-full w-full items-center justify-center"
+          style={{
+            color,
+            backgroundColor: `${color}12`,
+          }}
+        >
+          {icon}
+        </span>
+      }
+    />
+  );
+}
+
+/* ============================================================
+   EVENT PREVIEW
+   ============================================================ */
 
 export function EventPreview({
   e,
@@ -237,9 +320,7 @@ export function EventPreview({
             aria-hidden="true"
           />
 
-          <span>
-            {entryLabel(e)}
-          </span>
+          <span>{entryLabel(e)}</span>
         </li>
       </ul>
 
@@ -269,6 +350,10 @@ export function EventPreview({
   );
 }
 
+/* ============================================================
+   EVENT ROW
+   ============================================================ */
+
 export function EventRow({
   e,
   active,
@@ -278,9 +363,7 @@ export function EventRow({
   active: boolean;
   onClick: () => void;
 }) {
-  const m =
-    CATEGORY_META[e.category];
-
+  const m = CATEGORY_META[e.category];
   const s = statusOf(e);
 
   return (
@@ -295,56 +378,16 @@ export function EventRow({
             : "border-transparent bg-white hover:border-[#e0e7e3] hover:bg-[#fafcfb] hover:shadow-sm"
         }`}
       >
-        {/* Image / category fallback */}
+        {/* Image / automatic candidate fallback */}
         <span
           className="mt-0.5 flex h-[68px] w-[68px] shrink-0 items-center justify-center overflow-hidden rounded-xl border border-[#e1e7e3] bg-[#f1f5f2] text-2xl"
           aria-hidden="true"
         >
-          {e.imageUrl ? (
-            <img
-              src={e.imageUrl}
-              alt=""
-              className="h-full w-full object-cover"
-              loading="lazy"
-              onError={(event) => {
-                const image =
-                  event.currentTarget;
-
-                image.style.display =
-                  "none";
-
-                const fallback =
-                  image.nextElementSibling;
-
-                if (
-                  fallback instanceof
-                  HTMLElement
-                ) {
-                  fallback.classList.remove(
-                    "hidden",
-                  );
-                  fallback.classList.add(
-                    "flex",
-                  );
-                }
-              }}
-            />
-          ) : null}
-
-          <span
-            className={
-              e.imageUrl
-                ? "hidden h-full w-full items-center justify-center"
-                : "flex h-full w-full items-center justify-center"
-            }
-            style={{
-              color: m.hex,
-              backgroundColor:
-                `${m.hex}12`,
-            }}
-          >
-            {m.icon}
-          </span>
+          <EventThumbnail
+            e={e}
+            color={m.hex}
+            icon={m.icon}
+          />
         </span>
 
         <span className="min-w-0 flex-1">
@@ -374,8 +417,7 @@ export function EventRow({
           </span>
 
           <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
-            {e.locality},{" "}
-            {e.district} ·{" "}
+            {e.locality}, {e.district} ·{" "}
             {entryLabel(e)}
           </span>
         </span>
