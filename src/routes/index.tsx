@@ -43,7 +43,8 @@ import { KERALA_BOUNDS } from "@/lib/geo";
 import { supabase } from "@/integrations/supabase/client";
 
 const EventMap = lazy(
-  () => import("@/components/EventMap"),
+  () =>
+    import("@/components/EventMap"),
 );
 
 export const Route =
@@ -94,6 +95,10 @@ const QUICK: [
   ["upcoming", "Upcoming", "#22c55e"],
 ];
 
+/* ============================================================
+   DEBOUNCE
+   ============================================================ */
+
 function useDebounced<T>(
   v: T,
   ms: number,
@@ -113,6 +118,10 @@ function useDebounced<T>(
 
   return d;
 }
+
+/* ============================================================
+   DESKTOP DETECTION
+   ============================================================ */
 
 function useIsDesktop() {
   const [
@@ -147,6 +156,10 @@ function useIsDesktop() {
 
   return isDesktop;
 }
+
+/* ============================================================
+   HOME
+   ============================================================ */
 
 function Home() {
   const [f, setF] =
@@ -188,7 +201,6 @@ function Home() {
     setFilterOpen,
   ] = useState(false);
 
-  /* Mobile category expansion */
   const [
     categoriesExpanded,
     setCategoriesExpanded,
@@ -200,15 +212,8 @@ function Home() {
     );
 
   /*
-   * IMPORTANT:
-   *
-   * EventMap must not be mounted while the mobile
-   * list is displayed. Leaflet can be initialized
-   * inside a display:none container and then fail
-   * when that container becomes visible.
-   *
-   * Desktop keeps the map mounted even when the
-   * desktop list view is selected.
+   * EventMap must not be mounted while
+   * the mobile list is displayed.
    */
   const isDesktop =
     useIsDesktop();
@@ -216,6 +221,10 @@ function Home() {
   const showMap =
     isDesktop ||
     view === "map";
+
+  /* ==========================================================
+     CLOCK
+     ========================================================== */
 
   useEffect(() => {
     const t = setInterval(
@@ -228,6 +237,10 @@ function Home() {
       clearInterval(t);
   }, []);
 
+  /* ==========================================================
+     EVENTS QUERY
+     ========================================================== */
+
   const q = useQuery({
     queryKey: ["events"],
     queryFn: fetchEvents,
@@ -235,19 +248,15 @@ function Home() {
     refetchInterval: 60_000,
   });
 
-  /*
-   * Listen for database updates.
-   *
-   * The asynchronous image-search Edge Function
-   * updates image_url / image_candidates after the
-   * event has already been created.
-   *
-   * When that UPDATE arrives, refetch immediately
-   * instead of waiting for the 60-second interval.
-   */
+  /* ==========================================================
+     REALTIME UPDATES
+     ========================================================== */
+
   useEffect(() => {
     const channel = supabase
-      .channel("events-image-updates")
+      .channel(
+        "events-image-updates",
+      )
       .on(
         "postgres_changes",
         {
@@ -270,6 +279,10 @@ function Home() {
 
   const all = q.data;
 
+  /* ==========================================================
+     FILTERING
+     ========================================================== */
+
   const filtered = useMemo(
     () =>
       applyFilters(
@@ -285,6 +298,10 @@ function Home() {
     f.q,
     400,
   );
+
+  /* ==========================================================
+     MAP CONTEXT
+     ========================================================== */
 
   const place =
     contextPlace(
@@ -315,6 +332,10 @@ function Home() {
             e.locality ===
               place,
         ).length;
+
+  /* ==========================================================
+     MAP FIT
+     ========================================================== */
 
   const fit = useMemo(
     () => {
@@ -392,12 +413,20 @@ function Home() {
     ],
   );
 
+  /* ==========================================================
+     SELECTED EVENT
+     ========================================================== */
+
   const selected =
     filtered.find(
       (e) =>
         e.id ===
         selectedId,
     ) ?? null;
+
+  /* ==========================================================
+     SEARCH
+     ========================================================== */
 
   const setQ =
     useCallback(
@@ -409,6 +438,10 @@ function Home() {
       [],
     );
 
+  /* ==========================================================
+     MAP EVENT SELECTION
+     ========================================================== */
+
   const onSelect =
     useCallback(
       (e: KEvent) =>
@@ -418,36 +451,29 @@ function Home() {
       [],
     );
 
+  /* ==========================================================
+     LIST EVENT SELECTION
+     ========================================================== */
+
   const pickFromList = (
     e: KEvent,
   ) => {
-    /*
-     * Set the event selection first.
-     */
     setSelectedId(e.id);
 
-    /*
-     * Tell the map where the event is.
-     * EventMap will consume this after it mounts.
-     */
     setFocus({
       id: e.id,
       lat: e.lat,
       lng: e.lng,
     });
 
-    /*
-     * On mobile/tablet, switch to map view.
-     *
-     * Because EventMap is conditionally mounted
-     * using showMap, it will now mount into a
-     * visible container rather than a display:none
-     * container.
-     */
     if (view === "list") {
       setView("map");
     }
   };
+
+  /* ==========================================================
+     DATE FILTER
+     ========================================================== */
 
   const toggleDate = (
     k: DateKey,
@@ -460,6 +486,10 @@ function Home() {
           : k,
     }));
   };
+
+  /* ==========================================================
+     LOCATION
+     ========================================================== */
 
   const askLocation =
     useCallback(
@@ -494,6 +524,10 @@ function Home() {
         ),
       [],
     );
+
+  /* ==========================================================
+     FILTER COUNT
+     ========================================================== */
 
   const countFor =
     useCallback(
@@ -534,6 +568,10 @@ function Home() {
         DEFAULT_FILTERS,
       ) || !!f.q;
 
+  /* ==========================================================
+     EVENT LIST
+     ========================================================== */
+
   const list = (
     <ul aria-label="Events">
       {filtered.map((e) => (
@@ -556,6 +594,10 @@ function Home() {
     q.isSuccess &&
     filtered.length === 0;
 
+  /* ==========================================================
+     RENDER
+     ========================================================== */
+
   return (
     <div className="flex min-h-dvh flex-col overflow-x-hidden bg-background [touch-action:pan-y]">
       <SiteHeader
@@ -565,18 +607,17 @@ function Home() {
         }}
       />
 
-      {/* =========================================================
+      {/* =====================================================
           CATEGORIES + QUICK FILTERS
-          ========================================================= */}
+          ===================================================== */}
+
       <div className="shrink-0 border-b border-border bg-card">
         <div className="mx-auto flex w-full max-w-[1800px] flex-col items-center px-2 py-2 sm:px-4 sm:py-2.5 md:px-6 lg:px-8 xl:px-10">
-
           <div
             className="flex w-full flex-wrap justify-center gap-1.5 sm:gap-2 md:gap-2.5"
             role="group"
             aria-label="Categories"
           >
-            {/* ALL */}
             <Chip
               active={
                 f.category ===
@@ -596,7 +637,6 @@ function Home() {
               </span>
             </Chip>
 
-            {/* MOBILE COLLAPSED CATEGORIES */}
             {CATEGORIES.slice(
               0,
               2,
@@ -639,7 +679,6 @@ function Home() {
               ),
             )}
 
-            {/* MORE BUTTON */}
             {!categoriesExpanded && (
               <button
                 type="button"
@@ -655,7 +694,6 @@ function Home() {
               </button>
             )}
 
-            {/* REMAINING CATEGORIES */}
             <div
               className={`contents ${
                 categoriesExpanded
@@ -704,7 +742,6 @@ function Home() {
                 ),
               )}
 
-              {/* COLLAPSE BUTTON */}
               {categoriesExpanded && (
                 <button
                   type="button"
@@ -723,6 +760,7 @@ function Home() {
           </div>
 
           {/* QUICK FILTERS */}
+
           <div
             className="mt-2 w-full rounded-xl border border-[#e2e8f0] bg-[#f1f5f9] p-1.5 sm:mt-2.5 md:mt-3 md:p-2"
             role="group"
@@ -802,6 +840,7 @@ function Home() {
               )}
 
               {/* FREE EVENTS */}
+
               <button
                 type="button"
                 aria-pressed={
@@ -858,12 +897,13 @@ function Home() {
         </div>
       </div>
 
-      {/* =========================================================
+      {/* =====================================================
           MAIN WORKSPACE
-          ========================================================= */}
-      <main className="relative flex-1 [touch-action:pan-y]">
+          ===================================================== */}
 
+      <main className="relative flex-1 [touch-action:pan-y]">
         {/* MOBILE / TABLET CONTROLS */}
+
         <div className="shrink-0 border-b border-border bg-card px-2 py-2 lg:hidden">
           <div className="flex items-center justify-center gap-2">
             <button
@@ -913,6 +953,7 @@ function Home() {
                   size={15}
                   aria-hidden="true"
                 />
+
                 Map
               </button>
 
@@ -934,6 +975,7 @@ function Home() {
                   size={15}
                   aria-hidden="true"
                 />
+
                 List
               </button>
             </div>
@@ -941,25 +983,28 @@ function Home() {
         </div>
 
         {/* SMALL DESCRIPTION */}
+
         <div className="mx-auto w-full max-w-[1800px] px-2 pt-2 sm:px-3 sm:pt-3 lg:px-4">
           <p className="text-center text-xs text-muted-foreground sm:text-sm">
-            Explore events across Kerala — browse
-            the map, filter by category or date, and
-            tap an event for details.
+            Explore events across Kerala —
+            browse the map, filter by category
+            or date, and tap an event for
+            details.
           </p>
         </div>
 
-        {/* WORKSPACE */}
+        {/* ===================================================
+            WORKSPACE
+            =================================================== */}
+
         <div className="mx-auto w-full max-w-[1800px] px-1.5 py-1.5 sm:px-2 sm:py-2 md:px-3 lg:px-4">
           <div className="relative flex min-h-0 gap-2 sm:gap-3 lg:h-[calc(100dvh-260px)] lg:min-h-[520px] lg:gap-4">
-
-            {/* ===================================================
+            {/* =================================================
                 MAP PANEL
-                =================================================== */}
+                ================================================= */}
+
             {showMap && (
-              <div
-                className="relative min-h-[62vh] min-w-0 flex-1 overflow-hidden rounded-xl border border-border bg-muted shadow-sm [touch-action:auto] sm:min-h-[620px] sm:rounded-2xl lg:min-h-0"
-              >
+              <div className="relative min-h-[62vh] min-w-0 flex-1 overflow-hidden rounded-xl border border-border bg-muted shadow-sm [touch-action:auto] sm:min-h-[620px] sm:rounded-2xl lg:min-h-0">
                 <ClientOnly
                   fallback={
                     <div className="flex h-full items-center justify-center bg-muted text-sm text-muted-foreground">
@@ -976,17 +1021,13 @@ function Home() {
                   >
                     <EventMap
                       key="event-map"
-                      events={
-                        filtered
-                      }
+                      events={filtered}
                       selectedId={
                         selectedId
                       }
                       focus={focus}
                       fit={fit}
-                      onSelect={
-                        onSelect
-                      }
+                      onSelect={onSelect}
                       onViewport={
                         setVp
                       }
@@ -1019,8 +1060,8 @@ function Home() {
                     className="absolute left-1/2 top-16 z-[500] w-[90%] max-w-sm -translate-x-1/2 rounded-lg border border-border bg-card p-4 text-center shadow-lg"
                   >
                     <p className="text-sm font-semibold">
-                      We couldn't
-                      load events
+                      We couldn't load
+                      events
                     </p>
 
                     <p className="mt-1 text-xs text-muted-foreground">
@@ -1074,6 +1115,7 @@ function Home() {
                             size={14}
                             aria-hidden="true"
                           />
+
                           Post an
                           Event
                         </Link>
@@ -1081,25 +1123,30 @@ function Home() {
                     </div>
                   )}
 
+                {/* DESKTOP PREVIEW ONLY */}
+
                 {selected &&
                   view === "map" && (
                     <div className="absolute inset-x-0 bottom-0 z-[600] sm:inset-x-2 sm:bottom-2 md:inset-x-3 md:bottom-3 lg:inset-x-auto lg:left-3 lg:w-96">
-                      <EventPreview
-                        e={selected}
-                        onClose={() =>
-                          setSelectedId(
-                            null,
-                          )
-                        }
-                      />
+                      <div className="hidden lg:block">
+                        <EventPreview
+                          e={selected}
+                          onClose={() =>
+                            setSelectedId(
+                              null,
+                            )
+                          }
+                        />
+                      </div>
                     </div>
                   )}
               </div>
             )}
 
-            {/* ===================================================
+            {/* =================================================
                 DESKTOP EVENT PANEL
-                =================================================== */}
+                ================================================= */}
+
             <aside
               aria-label="Event list"
               className={`flex min-h-0 w-full shrink-0 flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm sm:rounded-2xl lg:w-[360px] xl:w-[400px] 2xl:w-[420px] ${
@@ -1108,7 +1155,8 @@ function Home() {
                   : "flex"
               }`}
             >
-              {/* CONTROLS INSIDE EVENT PANEL */}
+              {/* CONTROLS */}
+
               <div className="shrink-0 border-b border-border bg-card">
                 <div className="flex items-center justify-between gap-2 px-2.5 py-2 sm:px-3">
                   <div className="min-w-0">
@@ -1228,6 +1276,7 @@ function Home() {
               </div>
 
               {/* EVENT LIST */}
+
               <div className="min-h-0 flex-1 overflow-y-auto">
                 {q.isLoading && (
                   <p className="p-4 text-sm text-muted-foreground">
@@ -1246,9 +1295,8 @@ function Home() {
 
                 {empty && (
                   <p className="p-4 text-sm text-muted-foreground">
-                    Nothing to
-                    show for the
-                    current
+                    Nothing to show
+                    for the current
                     filters.
                   </p>
                 )}
@@ -1257,9 +1305,10 @@ function Home() {
               </div>
             </aside>
 
-            {/* ===================================================
-                MOBILE / TABLET LIST VIEW
-                =================================================== */}
+            {/* =================================================
+                MOBILE / TABLET LIST
+                ================================================= */}
+
             {view === "list" && (
               <div className="min-h-[62vh] min-w-0 flex-1 overflow-y-auto rounded-xl border border-border bg-card shadow-sm sm:min-h-[620px] sm:rounded-2xl lg:hidden">
                 <div className="border-b border-border px-2.5 py-2 sm:px-3">
@@ -1282,8 +1331,7 @@ function Home() {
 
                 {q.isLoading && (
                   <p className="p-6 text-center text-sm text-muted-foreground">
-                    Loading
-                    events…
+                    Loading events…
                   </p>
                 )}
 
@@ -1292,8 +1340,8 @@ function Home() {
                     role="alert"
                     className="p-6 text-center text-sm"
                   >
-                    We couldn't
-                    load events.{" "}
+                    We couldn't load
+                    events.{" "}
                     <button
                       type="button"
                       className="text-primary underline"
@@ -1324,8 +1372,7 @@ function Home() {
                         }
                         className="mt-2 text-primary underline"
                       >
-                        Clear
-                        filters
+                        Clear filters
                       </button>
                     )}
                   </div>
@@ -1337,6 +1384,41 @@ function Home() {
           </div>
         </div>
       </main>
+
+      {/* ======================================================
+          MOBILE EVENT BOTTOM SHEET
+          ====================================================== */}
+
+      {selected &&
+        view === "map" && (
+          <>
+            {/* Backdrop */}
+
+            <div
+              className="fixed inset-0 z-[900] bg-black/20 backdrop-blur-[1px] lg:hidden"
+              onClick={() =>
+                setSelectedId(null)
+              }
+              aria-hidden="true"
+            />
+
+            {/* Fixed mobile sheet */}
+
+            <EventPreview
+              e={selected}
+              mobile
+              onClose={() =>
+                setSelectedId(
+                  null,
+                )
+              }
+            />
+          </>
+        )}
+
+      {/* ======================================================
+          FILTER SHEET
+          ====================================================== */}
 
       <FilterSheet
         open={filterOpen}
@@ -1352,7 +1434,10 @@ function Home() {
         }
       />
 
-      {/* FOOTER */}
+      {/* ======================================================
+          FOOTER
+          ====================================================== */}
+
       <footer className="flex h-8 shrink-0 items-center justify-center border-t border-border bg-background">
         <p className="text-[11px] text-muted-foreground">
           © 2026 Kerala Events

@@ -10,7 +10,9 @@ import {
   useEffect,
   useRef,
   useState,
+  type ReactNode,
 } from "react";
+
 import {
   CATEGORY_META,
   STATUS_LABEL,
@@ -20,6 +22,10 @@ import {
   type KEvent,
 } from "@/lib/events";
 
+/* ============================================================
+   CHIP
+   ============================================================ */
+
 export function Chip({
   active,
   onClick,
@@ -28,7 +34,7 @@ export function Chip({
 }: {
   active?: boolean;
   onClick: () => void;
-  children: React.ReactNode;
+  children: ReactNode;
   tone?: string;
 }) {
   const getTint = (hex: string) => {
@@ -38,16 +44,26 @@ export function Chip({
       return undefined;
     }
 
-    const r = parseInt(value.slice(0, 2), 16);
-    const g = parseInt(value.slice(2, 4), 16);
-    const b = parseInt(value.slice(4, 6), 16);
+    const r = parseInt(
+      value.slice(0, 2),
+      16,
+    );
+    const g = parseInt(
+      value.slice(2, 4),
+      16,
+    );
+    const b = parseInt(
+      value.slice(4, 6),
+      16,
+    );
 
     return `rgba(${r}, ${g}, ${b}, 0.10)`;
   };
 
-  const inactiveQuickStyle = tone
+  const inactiveStyle = tone
     ? {
-        backgroundColor: getTint(tone),
+        backgroundColor:
+          getTint(tone),
         borderColor: `${tone}45`,
         color: tone,
       }
@@ -58,7 +74,7 @@ export function Chip({
       ? {
           background: tone,
           borderColor: tone,
-          color: "#fff",
+          color: "#ffffff",
         }
       : undefined;
 
@@ -70,7 +86,7 @@ export function Chip({
       style={
         active
           ? activeStyle
-          : inactiveQuickStyle
+          : inactiveStyle
       }
       className={`inline-flex h-10 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-4 text-[13px] font-semibold transition-all focus-visible:outline-2 focus-visible:outline-ring ${
         active
@@ -87,6 +103,10 @@ export function Chip({
   );
 }
 
+/* ============================================================
+   CATEGORY BADGE
+   ============================================================ */
+
 export function CategoryBadge({
   e,
 }: {
@@ -95,7 +115,8 @@ export function CategoryBadge({
     "category" | "subcategory"
   >;
 }) {
-  const m = CATEGORY_META[e.category];
+  const m =
+    CATEGORY_META[e.category];
 
   return (
     <span
@@ -111,11 +132,16 @@ export function CategoryBadge({
       </span>
 
       <span className="truncate">
-        {e.category} · {e.subcategory}
+        {e.category} ·{" "}
+        {e.subcategory}
       </span>
     </span>
   );
 }
+
+/* ============================================================
+   STATUS BADGE
+   ============================================================ */
 
 export function StatusBadge({
   e,
@@ -149,6 +175,10 @@ export function StatusBadge({
   );
 }
 
+/* ============================================================
+   CONFIRMATION TEXT
+   ============================================================ */
+
 export const confirmText = (
   n: number,
 ) =>
@@ -167,7 +197,7 @@ export function EventImage({
   urls: string[];
   alt: string;
   className?: string;
-  fallback: React.ReactNode;
+  fallback: ReactNode;
 }) {
   const candidates = Array.from(
     new Set(
@@ -184,6 +214,7 @@ export function EventImage({
 
   const [index, setIndex] =
     useState(0);
+
   const [failed, setFailed] =
     useState(false);
 
@@ -233,7 +264,7 @@ function EventThumbnail({
 }: {
   e: KEvent;
   color: string;
-  icon: React.ReactNode;
+  icon: ReactNode;
 }) {
   const candidates = Array.from(
     new Set(
@@ -272,276 +303,411 @@ function EventThumbnail({
 }
 
 /* ============================================================
-   EVENT PREVIEW / MOBILE BOTTOM SHEET
+   EVENT PREVIEW
    ============================================================ */
 
 export function EventPreview({
   e,
   onClose,
+  mobile = false,
 }: {
   e: KEvent;
   onClose: () => void;
+  mobile?: boolean;
 }) {
   const [expanded, setExpanded] =
     useState(false);
 
-  const touchStartY =
+  const [dragY, setDragY] =
+    useState(0);
+
+  const [dragging, setDragging] =
+    useState(false);
+
+  const startY =
     useRef<number | null>(null);
 
-  const touchStartScrollTop =
-    useRef(0);
+  const startExpanded =
+    useRef(false);
 
   /*
-   * Whenever a different event is selected,
-   * start that event in the compact state.
+   * Reset the sheet when another
+   * event is selected.
    */
   useEffect(() => {
     setExpanded(false);
-    touchStartY.current = null;
-    touchStartScrollTop.current = 0;
+    setDragY(0);
+    setDragging(false);
+    startY.current = null;
   }, [e.id]);
 
-  const handleTouchStart = (
-    event: React.TouchEvent<HTMLElement>,
+  const beginDrag = (
+    event: React.PointerEvent<HTMLDivElement>,
   ) => {
-    touchStartY.current =
-      event.touches[0]?.clientY ??
-      null;
-
-    touchStartScrollTop.current =
-      event.currentTarget.scrollTop;
-  };
-
-  const handleTouchEnd = (
-    event: React.TouchEvent<HTMLElement>,
-  ) => {
-    const startY =
-      touchStartY.current;
-
-    if (startY === null) {
+    if (
+      event.pointerType === "mouse"
+    ) {
       return;
     }
 
-    const endY =
-      event.changedTouches[0]
-        ?.clientY ?? startY;
+    startY.current =
+      event.clientY;
 
-    const deltaY =
-      endY - startY;
+    startExpanded.current =
+      expanded;
 
-    touchStartY.current = null;
+    setDragging(true);
+
+    event.currentTarget.setPointerCapture(
+      event.pointerId,
+    );
+  };
+
+  const moveDrag = (
+    event: React.PointerEvent<HTMLDivElement>,
+  ) => {
+    if (
+      !dragging ||
+      startY.current === null
+    ) {
+      return;
+    }
+
+    const delta =
+      event.clientY -
+      startY.current;
+
+    if (!startExpanded.current) {
+      /*
+       * Compact state:
+       * only allow upward dragging.
+       */
+      setDragY(
+        Math.max(
+          -window.innerHeight * 0.72,
+          Math.min(delta, 0),
+        ),
+      );
+
+      return;
+    }
 
     /*
-     * A meaningful upward swipe expands
-     * the sheet.
+     * Expanded state:
+     * only allow downward dragging.
      */
-    if (deltaY < -45) {
+    setDragY(
+      Math.max(
+        0,
+        Math.min(
+          delta,
+          window.innerHeight * 0.72,
+        ),
+      ),
+    );
+  };
+
+  const endDrag = (
+    event: React.PointerEvent<HTMLDivElement>,
+  ) => {
+    if (
+      !dragging ||
+      startY.current === null
+    ) {
+      return;
+    }
+
+    const delta =
+      event.clientY -
+      startY.current;
+
+    const threshold =
+      window.innerHeight * 0.12;
+
+    setDragging(false);
+    setDragY(0);
+    startY.current = null;
+
+    /*
+     * Compact → expanded.
+     */
+    if (
+      !startExpanded.current &&
+      delta < -threshold
+    ) {
       setExpanded(true);
       return;
     }
 
     /*
-     * A downward swipe collapses the sheet
-     * only when the content is already at
-     * the top.
+     * Expanded → compact.
      */
     if (
-      deltaY > 45 &&
-      touchStartScrollTop.current <=
-        2
+      startExpanded.current &&
+      delta > threshold
     ) {
       setExpanded(false);
     }
   };
 
+  const cancelDrag = () => {
+    setDragging(false);
+    setDragY(0);
+    startY.current = null;
+  };
+
   const m =
     CATEGORY_META[e.category];
+
+  /*
+   * Mobile:
+   *
+   * compact ≈ 28vh
+   * expanded ≈ 94vh
+   *
+   * Desktop doesn't use these dimensions.
+   */
+  const currentHeight =
+    mobile
+      ? expanded
+        ? "94dvh"
+        : "28dvh"
+      : undefined;
 
   return (
     <section
       aria-label={`Preview: ${e.title}`}
-      onTouchStart={handleTouchStart}
-      onTouchEnd={handleTouchEnd}
-      className={`relative overflow-y-auto overscroll-contain rounded-t-2xl border border-border bg-card p-4 shadow-lg transition-[max-height] duration-300 ease-out lg:mx-auto lg:max-w-2xl lg:rounded-2xl ${
-        expanded
-          ? "max-h-[88dvh]"
-          : "max-h-[38dvh]"
+      data-dragging={dragging}
+      className={`relative flex flex-col overflow-hidden border border-border bg-card shadow-2xl ${
+        mobile
+          ? "fixed inset-x-0 bottom-0 z-[1000] rounded-t-3xl"
+          : "max-h-[55dvh] overflow-y-auto rounded-t-2xl lg:mx-auto lg:max-w-2xl lg:rounded-2xl"
       }`}
       style={{
-        touchAction: "pan-y",
+        height: currentHeight,
+        transform:
+          mobile && dragging
+            ? `translateY(${dragY}px)`
+            : undefined,
+        transition:
+          dragging
+            ? "none"
+            : "height 320ms cubic-bezier(0.22, 1, 0.36, 1), transform 320ms cubic-bezier(0.22, 1, 0.36, 1)",
+        willChange: mobile
+          ? "height, transform"
+          : undefined,
       }}
     >
-      {/* Mobile drag handle */}
-      <div
-        className="mx-auto mb-3 flex h-5 w-16 items-start justify-center lg:hidden"
-        aria-hidden="true"
-      >
-        <span
-          className={`mt-1 h-1.5 w-12 rounded-full transition-colors ${
-            expanded
-              ? "bg-muted-foreground/40"
-              : "bg-muted-foreground/50"
-          }`}
-        />
-      </div>
+      {/* ======================================================
+          MOBILE DRAG HANDLE
+          ====================================================== */}
 
-      {/* Mobile swipe hint */}
-      {!expanded && (
-        <div className="mb-2 flex items-center justify-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground lg:hidden">
-          <span aria-hidden="true">
-            ↑
-          </span>
-          Swipe up for details
+      {mobile && (
+        <div
+          className="shrink-0 px-4 pb-2 pt-3"
+          style={{
+            touchAction: "none",
+          }}
+          onPointerDown={
+            beginDrag
+          }
+          onPointerMove={
+            moveDrag
+          }
+          onPointerUp={
+            endDrag
+          }
+          onPointerCancel={
+            cancelDrag
+          }
+        >
+          <button
+            type="button"
+            aria-label={
+              expanded
+                ? "Collapse event details"
+                : "Expand event details"
+            }
+            onClick={() =>
+              setExpanded(
+                (value) =>
+                  !value,
+              )
+            }
+            className="mx-auto block h-7 w-16 cursor-grab touch-none rounded-full py-2 active:cursor-grabbing"
+          >
+            <span className="mx-auto block h-1.5 w-12 rounded-full bg-muted-foreground/40" />
+          </button>
+
+          {!expanded && (
+            <p className="mt-1 text-center text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Swipe up for details
+            </p>
+          )}
         </div>
       )}
 
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-          <CategoryBadge e={e} />
-          <StatusBadge e={e} />
+      {/* ======================================================
+          HEADER
+          ====================================================== */}
+
+      <div className="shrink-0 px-4 pb-2">
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+            <CategoryBadge e={e} />
+            <StatusBadge e={e} />
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close preview"
+            className="-m-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full hover:bg-muted"
+          >
+            <X
+              size={18}
+              aria-hidden="true"
+            />
+          </button>
         </div>
 
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close preview"
-          className="-m-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full hover:bg-muted"
-        >
-          <X
-            size={18}
-            aria-hidden="true"
-          />
-        </button>
+        <h2 className="mt-2 text-lg font-bold leading-snug">
+          {e.title}
+        </h2>
       </div>
 
-      <h2 className="mt-2 text-lg font-bold leading-snug">
-        {e.title}
-      </h2>
+      {/* ======================================================
+          SCROLLABLE CONTENT
+          ====================================================== */}
 
-      {/* Event image on expanded mobile sheet */}
-      <div
-        className={`mt-3 overflow-hidden rounded-xl border border-border bg-muted transition-[height,opacity] duration-300 lg:hidden ${
-          expanded
-            ? "h-40 opacity-100"
-            : "h-0 opacity-0"
-        }`}
-      >
-        <EventThumbnail
-          e={e}
-          color={m.hex}
-          icon={m.icon}
-        />
-      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-3">
+        {mobile && expanded && (
+          <div className="mb-3 h-40 overflow-hidden rounded-xl border border-border bg-muted">
+            <EventThumbnail
+              e={e}
+              color={m.hex}
+              icon={m.icon}
+            />
+          </div>
+        )}
 
-      <ul className="mt-2 space-y-1 text-sm">
-        <li className="flex gap-2">
-          <MapPin
-            size={16}
-            className="mt-0.5 shrink-0"
-            aria-hidden="true"
-          />
+        <ul className="space-y-2 text-sm">
+          <li className="flex gap-2">
+            <MapPin
+              size={17}
+              className="mt-0.5 shrink-0"
+              aria-hidden="true"
+            />
 
-          <span>
-            {e.venue},{" "}
-            {e.locality},{" "}
-            {e.district}
-          </span>
-        </li>
-
-        <li className="flex gap-2">
-          <CalendarDays
-            size={16}
-            className="mt-0.5 shrink-0"
-            aria-hidden="true"
-          />
-
-          <span>
-            {fmtWhen(e)}
-          </span>
-        </li>
-
-        <li className="flex gap-2">
-          <Ticket
-            size={16}
-            className="mt-0.5 shrink-0"
-            aria-hidden="true"
-          />
-
-          <span>
-            {entryLabel(e)}
-          </span>
-        </li>
-      </ul>
-
-      <p
-        className={`mt-2 text-sm text-muted-foreground ${
-          expanded
-            ? ""
-            : "line-clamp-3"
-        }`}
-      >
-        {e.description}
-      </p>
-
-      {/* Additional information becomes available naturally when expanded */}
-      {expanded && (
-        <div className="mt-3 space-y-3">
-          <div className="rounded-xl bg-muted/50 p-3">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Location
-            </p>
-
-            <p className="mt-1 text-sm font-medium">
-              {e.venue}
-            </p>
-
-            <p className="text-sm text-muted-foreground">
+            <span>
+              {e.venue},{" "}
               {e.locality},{" "}
               {e.district}
-            </p>
-          </div>
+            </span>
+          </li>
 
-          <div className="rounded-xl bg-muted/50 p-3">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Date & time
-            </p>
+          <li className="flex gap-2">
+            <CalendarDays
+              size={17}
+              className="mt-0.5 shrink-0"
+              aria-hidden="true"
+            />
 
-            <p className="mt-1 text-sm font-medium">
+            <span>
               {fmtWhen(e)}
-            </p>
-          </div>
+            </span>
+          </li>
 
-          <div className="rounded-xl bg-muted/50 p-3">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Entry
-            </p>
+          <li className="flex gap-2">
+            <Ticket
+              size={17}
+              className="mt-0.5 shrink-0"
+              aria-hidden="true"
+            />
 
-            <p className="mt-1 text-sm font-medium">
+            <span>
               {entryLabel(e)}
-            </p>
-          </div>
-        </div>
-      )}
+            </span>
+          </li>
+        </ul>
 
-      <div className="mt-4 flex flex-col gap-3 border-t border-border pt-3 sm:flex-row sm:items-center sm:justify-between">
-        <span className="flex items-center gap-1 text-sm">
-          <ThumbsUp
-            size={14}
-            aria-hidden="true"
-          />
-
-          {confirmText(
-            e.upvotes,
-          )}
-        </span>
-
-        <Link
-          to="/event/$id"
-          params={{ id: e.id }}
-          className="flex h-10 items-center justify-center rounded-full bg-primary px-5 text-sm font-semibold text-primary-foreground hover:opacity-90"
+        <p
+          className={`mt-3 text-sm leading-relaxed text-muted-foreground ${
+            mobile && !expanded
+              ? "line-clamp-3"
+              : ""
+          }`}
         >
-          View Event
-        </Link>
+          {e.description}
+        </p>
+
+        {mobile && expanded && (
+          <div className="mt-4 space-y-3">
+            <div className="rounded-xl bg-muted/50 p-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Location
+              </p>
+
+              <p className="mt-1 text-sm font-medium">
+                {e.venue}
+              </p>
+
+              <p className="text-sm text-muted-foreground">
+                {e.locality},{" "}
+                {e.district}
+              </p>
+            </div>
+
+            <div className="rounded-xl bg-muted/50 p-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Date & time
+              </p>
+
+              <p className="mt-1 text-sm font-medium">
+                {fmtWhen(e)}
+              </p>
+            </div>
+
+            <div className="rounded-xl bg-muted/50 p-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Entry
+              </p>
+
+              <p className="mt-1 text-sm font-medium">
+                {entryLabel(e)}
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ======================================================
+          FOOTER
+          ====================================================== */}
+
+      <div className="shrink-0 border-t border-border bg-card px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
+        <div className="flex items-center justify-between gap-3">
+          <span className="flex min-w-0 items-center gap-1 text-sm">
+            <ThumbsUp
+              size={14}
+              aria-hidden="true"
+            />
+
+            <span className="truncate">
+              {confirmText(
+                e.upvotes,
+              )}
+            </span>
+          </span>
+
+          <Link
+            to="/event/$id"
+            params={{ id: e.id }}
+            className="flex h-10 shrink-0 items-center justify-center rounded-full bg-primary px-5 text-sm font-semibold text-primary-foreground hover:opacity-90"
+          >
+            View Event
+          </Link>
+        </div>
       </div>
     </section>
   );
