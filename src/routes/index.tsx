@@ -1328,12 +1328,7 @@ function Home() {
                                 ? "ended event"
                                 : "ended events"
                             }`
-                          : `${place} · ${placeCount} ${
-                              placeCount ===
-                              1
-                                ? "event"
-                                : "events"
-                            }`}
+                          : ""}
                     </p>
 
                     {f.subcategory && (
@@ -1575,12 +1570,7 @@ function Home() {
                                 ? "ended event"
                                 : "ended events"
                             }`
-                          : `${place} · ${placeCount} ${
-                              placeCount ===
-                              1
-                                ? "event"
-                                : "events"
-                            }`}
+                          : ""}
                     </p>
 
                     {/* MOBILE ENDED BUTTON */}
