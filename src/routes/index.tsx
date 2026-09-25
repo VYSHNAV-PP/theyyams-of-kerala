@@ -665,6 +665,84 @@ function Home() {
 
       {/* MAIN WORKSPACE */}
       <main className="relative min-h-0 flex-1 overflow-hidden">
+
+        {/* MOBILE / TABLET CONTROLS */}
+        <div className="shrink-0 border-b border-border bg-card px-2 py-2 lg:hidden">
+          <div className="flex items-center justify-center gap-2">
+            <button
+              type="button"
+              onClick={() =>
+                setFilterOpen(true)
+              }
+              className="flex h-9 items-center gap-1.5 rounded-lg border border-border bg-card px-3 text-sm font-medium hover:bg-muted sm:h-10 sm:px-4"
+            >
+              <SlidersHorizontal
+                size={16}
+                aria-hidden="true"
+              />
+
+              Filters
+
+              {activeAdvanced >
+                0 && (
+                <span className="rounded-full bg-primary px-1.5 text-xs text-primary-foreground">
+                  {
+                    activeAdvanced
+                  }
+                </span>
+              )}
+            </button>
+
+            <div
+              className="flex overflow-hidden rounded-lg border border-border"
+              role="group"
+              aria-label="View"
+            >
+              <button
+                type="button"
+                aria-pressed={
+                  view === "map"
+                }
+                onClick={() =>
+                  setView("map")
+                }
+                className={`flex h-9 items-center gap-1.5 px-3 text-sm font-medium sm:h-10 sm:px-4 ${
+                  view === "map"
+                    ? "bg-foreground text-background"
+                    : "bg-card hover:bg-muted"
+                }`}
+              >
+                <MapIcon
+                  size={15}
+                  aria-hidden="true"
+                />
+                Map
+              </button>
+
+              <button
+                type="button"
+                aria-pressed={
+                  view === "list"
+                }
+                onClick={() =>
+                  setView("list")
+                }
+                className={`flex h-9 items-center gap-1.5 px-3 text-sm font-medium sm:h-10 sm:px-4 ${
+                  view === "list"
+                    ? "bg-foreground text-background"
+                    : "bg-card hover:bg-muted"
+                }`}
+              >
+                <List
+                  size={15}
+                  aria-hidden="true"
+                />
+                List
+              </button>
+            </div>
+          </div>
+        </div>
+
         <div className="mx-auto h-full w-full max-w-[1800px] px-1.5 py-1.5 sm:px-2 sm:py-2 md:px-3 lg:px-4">
           <div className="relative flex h-full min-h-0 gap-2 sm:gap-3 lg:gap-4">
 
@@ -809,51 +887,6 @@ function Home() {
                     />
                   </div>
                 )}
-
-              {/* MOBILE / TABLET VIEW SWITCHER */}
-              <div className="absolute right-2 top-2 z-[600] flex overflow-hidden rounded-lg border border-border bg-card shadow-md sm:right-3 sm:top-3 lg:hidden">
-                <button
-                  type="button"
-                  aria-pressed={
-                    view === "map"
-                  }
-                  onClick={() =>
-                    setView("map")
-                  }
-                  className={`flex h-9 items-center gap-1.5 px-3 text-sm font-medium sm:h-10 sm:px-3.5 ${
-                    view === "map"
-                      ? "bg-foreground text-background"
-                      : "bg-card hover:bg-muted"
-                  }`}
-                >
-                  <MapIcon
-                    size={15}
-                    aria-hidden="true"
-                  />
-                  Map
-                </button>
-
-                <button
-                  type="button"
-                  aria-pressed={
-                    view === "list"
-                  }
-                  onClick={() =>
-                    setView("list")
-                  }
-                  className={`flex h-9 items-center gap-1.5 px-3 text-sm font-medium sm:h-10 sm:px-3.5 ${
-                    view === "list"
-                      ? "bg-foreground text-background"
-                      : "bg-card hover:bg-muted"
-                  }`}
-                >
-                  <List
-                    size={15}
-                    aria-hidden="true"
-                  />
-                  List
-                </button>
-              </div>
             </div>
 
             {/* DESKTOP EVENT PANEL */}
@@ -1032,32 +1065,6 @@ function Home() {
                               : "events"
                           }`}
                     </p>
-
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setFilterOpen(
-                          true,
-                        )
-                      }
-                      className="flex h-9 shrink-0 items-center gap-1.5 rounded-md border border-border px-2.5 text-sm font-medium hover:bg-muted sm:px-3"
-                    >
-                      <SlidersHorizontal
-                        size={16}
-                        aria-hidden="true"
-                      />
-
-                      Filters
-
-                      {activeAdvanced >
-                        0 && (
-                        <span className="rounded-full bg-primary px-1.5 text-xs text-primary-foreground">
-                          {
-                            activeAdvanced
-                          }
-                        </span>
-                      )}
-                    </button>
                   </div>
                 </div>
 

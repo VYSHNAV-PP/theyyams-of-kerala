@@ -125,7 +125,9 @@ export async function fetchEventFeedback(
     (data ?? []) as Array<{
       id: string;
       event_id: string;
-      type: "downvote" | "report";
+      type:
+        | "downvote"
+        | "report";
       reason: string;
       note: string | null;
       created_at: string;
@@ -136,7 +138,8 @@ export async function fetchEventFeedback(
     type: row.type,
     reason: row.reason,
     note: row.note,
-    createdAt: row.created_at,
+    createdAt:
+      row.created_at,
   }));
 }
 
@@ -155,29 +158,38 @@ type DbEvent = Omit<
 function toEvent(
   r: DbEvent,
 ): KEvent {
-  const category = asCategory(r.category);
+  const category =
+    asCategory(r.category);
 
   return {
     id: r.id,
     title: r.title,
     category,
-    subcategory: r.subcategory,
-    description: r.description,
+    subcategory:
+      r.subcategory,
+    description:
+      r.description,
 
     date: r.date,
-    endDate: r.end_date ?? r.date,
+    endDate:
+      r.end_date ?? r.date,
 
     startTime:
       r.start_time.slice(0, 5),
 
     endTime:
-      r.end_time?.slice(0, 5) ?? null,
+      r.end_time?.slice(0, 5) ??
+      null,
 
     startMs:
-      Date.parse(r.starts_at),
+      Date.parse(
+        r.starts_at,
+      ),
 
     endMs:
-      Date.parse(r.ends_at),
+      Date.parse(
+        r.ends_at,
+      ),
 
     venue: r.venue,
     locality: r.locality,
@@ -186,29 +198,44 @@ function toEvent(
     lat: r.lat,
     lng: r.lng,
 
-    entry:
-      (
-        [
-          "free",
-          "paid",
-          "registration",
-        ].includes(r.entry_status)
-          ? r.entry_status
-          : "free"
-      ) as EntryStatus,
+    entry: (
+      [
+        "free",
+        "paid",
+        "registration",
+      ].includes(
+        r.entry_status,
+      )
+        ? r.entry_status
+        : "free"
+    ) as EntryStatus,
 
     fee: r.entry_fee,
     contact: r.contact,
 
-    ticketUrl: r.ticket_url,
-    instagram: r.instagram,
-    website: r.website,
-    otherUrl: r.other_url,
-    imageUrl: r.image_url,
+    ticketUrl:
+      r.ticket_url,
 
-    upvotes: r.upvotes,
-    downvotes: r.downvotes,
-    reports: r.reports,
+    instagram:
+      r.instagram,
+
+    website:
+      r.website,
+
+    otherUrl:
+      r.other_url,
+
+    imageUrl:
+      r.image_url,
+
+    upvotes:
+      r.upvotes,
+
+    downvotes:
+      r.downvotes,
+
+    reports:
+      r.reports,
 
     hay: [
       r.title,
@@ -229,7 +256,9 @@ function toEvent(
    FETCH EVENTS
    ============================================================ */
 
-export async function fetchEvents(): Promise<KEvent[]> {
+export async function fetchEvents(): Promise<
+  KEvent[]
+> {
   const since =
     new Date(
       Date.now() -
@@ -242,7 +271,10 @@ export async function fetchEvents(): Promise<KEvent[]> {
   } = await supabase
     .from("events")
     .select(COLS)
-    .gt("ends_at", since)
+    .gt(
+      "ends_at",
+      since,
+    )
     .order("starts_at")
     .limit(2000);
 
@@ -314,36 +346,124 @@ export async function addEvent(
     .insert({
       id: e.id,
       title: e.title,
-      category: e.category,
-      subcategory: e.subcategory,
-      description: e.description,
+      category:
+        e.category,
+      subcategory:
+        e.subcategory,
+      description:
+        e.description,
 
       date: e.date,
-      end_date: e.endDate,
+      end_date:
+        e.endDate,
 
-      start_time: e.startTime,
-      time: e.startTime,
-      end_time: e.endTime,
+      start_time:
+        e.startTime,
+      time:
+        e.startTime,
+      end_time:
+        e.endTime,
 
-      venue: e.venue,
-      locality: e.locality,
-      district: e.district,
+      venue:
+        e.venue,
+      locality:
+        e.locality,
+      district:
+        e.district,
 
-      lat: e.lat,
-      lng: e.lng,
+      lat:
+        e.lat,
+      lng:
+        e.lng,
 
-      entry_status: e.entry,
-      entry_fee: e.fee,
-      contact: e.contact,
+      entry_status:
+        e.entry,
+      entry_fee:
+        e.fee,
+      contact:
+        e.contact,
 
-      ticket_url: e.ticketUrl,
-      instagram: e.instagram,
-      website: e.website,
-      other_url: e.otherUrl,
-      image_url: e.imageUrl,
+      ticket_url:
+        e.ticketUrl,
+      instagram:
+        e.instagram,
+      website:
+        e.website,
+      other_url:
+        e.otherUrl,
+      image_url:
+        e.imageUrl,
     });
 
   if (error) throw error;
+}
+
+/* ============================================================
+   AUTOMATIC EVENT IMAGE
+   ============================================================ */
+
+export async function findEventImage(
+  e: Pick<
+    NewEvent,
+    | "title"
+    | "category"
+    | "subcategory"
+    | "venue"
+    | "locality"
+    | "district"
+  >,
+): Promise<string | null> {
+  try {
+    const {
+      data,
+      error,
+    } =
+      await supabase.functions.invoke(
+        "search-event-image",
+        {
+          body: {
+            title:
+              e.title,
+
+            category:
+              e.category,
+
+            subcategory:
+              e.subcategory,
+
+            venue:
+              e.venue,
+
+            locality:
+              e.locality,
+
+            district:
+              e.district,
+          },
+        },
+      );
+
+    if (error) {
+      console.warn(
+        "Automatic event image search failed:",
+        error,
+      );
+
+      return null;
+    }
+
+    return (
+      data?.imageUrl ??
+      null
+    );
+  } catch (error) {
+    console.warn(
+      "Automatic event image search failed:",
+      error,
+    );
+
+    return null;
+  }
 }
 
 /* ============================================================
@@ -358,20 +478,26 @@ export async function uploadPoster(
 
   const {
     error,
-  } = await supabase.storage
-    .from("event-posters")
-    .upload(
-      path,
-      blob,
-      {
-        contentType: "image/jpeg",
-      },
-    );
+  } =
+    await supabase.storage
+      .from(
+        "event-posters",
+      )
+      .upload(
+        path,
+        blob,
+        {
+          contentType:
+            "image/jpeg",
+        },
+      );
 
   if (error) throw error;
 
   return supabase.storage
-    .from("event-posters")
+    .from(
+      "event-posters",
+    )
     .getPublicUrl(path)
     .data.publicUrl;
 }
@@ -381,7 +507,9 @@ export async function shrinkImage(
   file: File,
 ): Promise<Blob> {
   const bmp =
-    await createImageBitmap(file);
+    await createImageBitmap(
+      file,
+    );
 
   const k =
     Math.min(
@@ -394,7 +522,9 @@ export async function shrinkImage(
     );
 
   const c =
-    document.createElement("canvas");
+    document.createElement(
+      "canvas",
+    );
 
   c.width =
     Math.round(
@@ -417,13 +547,18 @@ export async function shrinkImage(
     );
 
   return new Promise(
-    (res, rej) =>
+    (
+      res,
+      rej,
+    ) =>
       c.toBlob(
         (b) =>
           b
             ? res(b)
             : rej(
-                new Error("image"),
+                new Error(
+                  "image",
+                ),
               ),
         "image/jpeg",
         0.82,
@@ -442,7 +577,8 @@ function voterId(): string {
     );
 
   if (!v) {
-    v = crypto.randomUUID();
+    v =
+      crypto.randomUUID();
 
     localStorage.setItem(
       "ke-voter",
@@ -487,7 +623,8 @@ export function getLocalVote(
   try {
     const current =
       localStorage.getItem(
-        VOTE_KEY_PREFIX + id,
+        VOTE_KEY_PREFIX +
+          id,
       );
 
     if (
@@ -497,13 +634,10 @@ export function getLocalVote(
       return current;
     }
 
-    /*
-     * Backwards compatibility with the
-     * previous localStorage implementation.
-     */
     if (
       localStorage.getItem(
-        "ke-confirmed-" + id,
+        "ke-confirmed-" +
+          id,
       ) === "1"
     ) {
       return "up";
@@ -511,7 +645,8 @@ export function getLocalVote(
 
     if (
       localStorage.getItem(
-        "ke-downvoted-" + id,
+        "ke-downvoted-" +
+          id,
       ) === "1"
     ) {
       return "down";
@@ -528,24 +663,20 @@ function setLocalVote(
   vote: LocalVote,
 ) {
   try {
-    /*
-     * Write the new single source of truth.
-     */
     localStorage.setItem(
-      VOTE_KEY_PREFIX + id,
+      VOTE_KEY_PREFIX +
+        id,
       vote,
     );
 
-    /*
-     * Remove legacy keys after the new state
-     * has been successfully written.
-     */
     localStorage.removeItem(
-      "ke-confirmed-" + id,
+      "ke-confirmed-" +
+        id,
     );
 
     localStorage.removeItem(
-      "ke-downvoted-" + id,
+      "ke-downvoted-" +
+        id,
     );
   } catch {
     // Ignore storage errors.
@@ -555,17 +686,20 @@ function setLocalVote(
 export const hasConfirmed = (
   id: string,
 ) =>
-  getLocalVote(id) === "up";
+  getLocalVote(id) ===
+  "up";
 
 export const hasDownvoted = (
   id: string,
 ) =>
-  getLocalVote(id) === "down";
+  getLocalVote(id) ===
+  "down";
 
 export const hasVoted = (
   id: string,
 ) =>
-  getLocalVote(id) !== null;
+  getLocalVote(id) !==
+  null;
 
 /* ============================================================
    UPVOTE / CONFIRM
@@ -574,11 +708,9 @@ export const hasVoted = (
 export async function confirmEvent(
   id: string,
 ) {
-  /*
-   * Block a second vote locally before
-   * making another database request.
-   */
-  if (getLocalVote(id)) {
+  if (
+    getLocalVote(id)
+  ) {
     throw new Error(
       "You have already voted on this event.",
     );
@@ -586,14 +718,18 @@ export async function confirmEvent(
 
   const {
     error,
-  } = await supabase.rpc(
-    "vote_event",
-    {
-      _event_id: id,
-      _voter_id: voterId(),
-      _kind: "up",
-    },
-  );
+  } =
+    await supabase.rpc(
+      "vote_event",
+      {
+        _event_id:
+          id,
+        _voter_id:
+          voterId(),
+        _kind:
+          "up",
+      },
+    );
 
   if (error) throw error;
 
@@ -607,40 +743,57 @@ export async function confirmEvent(
    DOWNVOTE REASONS
    ============================================================ */
 
-export const DOWNVOTE_REASONS = [
-  {
-    value: "cancelled",
-    label: "Event is cancelled",
-  },
-  {
-    value: "wrong_datetime",
-    label: "Wrong date or time",
-  },
-  {
-    value: "wrong_location",
-    label: "Wrong location",
-  },
-  {
-    value: "incorrect_info",
-    label: "Information is incorrect",
-  },
-  {
-    value: "duplicate",
-    label: "This is a duplicate event",
-  },
-  {
-    value: "ended",
-    label: "Event has already ended",
-  },
-  {
-    value: "not_happening",
-    label: "This event is not happening",
-  },
-  {
-    value: "other",
-    label: "Other",
-  },
-] as const;
+export const DOWNVOTE_REASONS =
+  [
+    {
+      value:
+        "cancelled",
+      label:
+        "Event is cancelled",
+    },
+    {
+      value:
+        "wrong_datetime",
+      label:
+        "Wrong date or time",
+    },
+    {
+      value:
+        "wrong_location",
+      label:
+        "Wrong location",
+    },
+    {
+      value:
+        "incorrect_info",
+      label:
+        "Information is incorrect",
+    },
+    {
+      value:
+        "duplicate",
+      label:
+        "This is a duplicate event",
+    },
+    {
+      value:
+        "ended",
+      label:
+        "Event has already ended",
+    },
+    {
+      value:
+        "not_happening",
+      label:
+        "This event is not happening",
+    },
+    {
+      value:
+        "other",
+      label:
+        "Other",
+    },
+  ] as const;
 
 export type DownvoteReason =
   (typeof DOWNVOTE_REASONS)[number]["value"];
@@ -654,52 +807,58 @@ export async function downvoteEvent(
   reason: DownvoteReason,
   note = "",
 ) {
-  /*
-   * One vote total per event.
-   */
-  if (getLocalVote(id)) {
+  if (
+    getLocalVote(id)
+  ) {
     throw new Error(
       "You have already voted on this event.",
     );
   }
 
-  const voter = voterId();
+  const voter =
+    voterId();
 
-  /*
-   * Record the public downvote.
-   */
   const {
     error: voteError,
-  } = await supabase.rpc(
-    "vote_event",
-    {
-      _event_id: id,
-      _voter_id: voter,
-      _kind: "down",
-    },
-  );
+  } =
+    await supabase.rpc(
+      "vote_event",
+      {
+        _event_id:
+          id,
+        _voter_id:
+          voter,
+        _kind:
+          "down",
+      },
+    );
 
   if (voteError) {
     throw voteError;
   }
 
-  /*
-   * Save the reason and optional note.
-   */
   const {
-    error: feedbackError,
-  } = await supabase.rpc(
-    "submit_downvote",
-    {
-      _event_id: id,
-      _author_id: voter,
-      _reason: reason,
-      _note:
-        note.trim() || null,
-    } as any,
-  );
+    error:
+      feedbackError,
+  } =
+    await supabase.rpc(
+      "submit_downvote",
+      {
+        _event_id:
+          id,
+        _author_id:
+          voter,
+        _reason:
+          reason,
+        _note:
+          note.trim() ||
+          null,
+      } as any,
+    );
 
-  if (feedbackError) {
+  if (
+    feedbackError
+  ) {
     throw feedbackError;
   }
 
@@ -720,24 +879,30 @@ export async function reportEvent(
 ) {
   const {
     error,
-  } = await supabase.rpc(
-    "report_event",
-    {
-      _event_id: id,
-      _reporter_id: voterId(),
-      _reason: reason,
-      ...(note.trim()
-        ? {
-            _note: note.trim(),
-          }
-        : {}),
-    },
-  );
+  } =
+    await supabase.rpc(
+      "report_event",
+      {
+        _event_id:
+          id,
+        _reporter_id:
+          voterId(),
+        _reason:
+          reason,
+        ...(note.trim()
+          ? {
+              _note:
+                note.trim(),
+            }
+          : {}),
+      },
+    );
 
   if (error) throw error;
 
   localStorage.setItem(
-    "ke-reported-" + id,
+    "ke-reported-" +
+      id,
     "1",
   );
 }
@@ -746,7 +911,8 @@ export const hasReported = (
   id: string,
 ) =>
   localStorage.getItem(
-    "ke-reported-" + id,
+    "ke-reported-" +
+      id,
   ) === "1";
 
 /* ============================================================
@@ -757,7 +923,8 @@ export function statusOf(
   e: KEvent,
   now = Date.now(),
 ): Status {
-  return now < e.startMs
+  return now <
+    e.startMs
     ? "upcoming"
     : now <= e.endMs
       ? "now"
@@ -768,9 +935,12 @@ export const STATUS_LABEL: Record<
   Status,
   string
 > = {
-  upcoming: "Upcoming",
-  now: "Happening now",
-  ended: "Ended",
+  upcoming:
+    "Upcoming",
+  now:
+    "Happening now",
+  ended:
+    "Ended",
 };
 
 export const isFlagged = (
@@ -805,10 +975,13 @@ const dfmt =
   new Intl.DateTimeFormat(
     "en-IN",
     {
-      weekday: "short",
+      weekday:
+        "short",
       day: "numeric",
-      month: "short",
-      timeZone: "UTC",
+      month:
+        "short",
+      timeZone:
+        "UTC",
     },
   );
 
@@ -817,7 +990,8 @@ export const fmtDate = (
 ) =>
   dfmt.format(
     new Date(
-      iso + "T00:00:00Z",
+      iso +
+        "T00:00:00Z",
     ),
   );
 
@@ -825,13 +999,16 @@ export function fmtWhen(
   e: KEvent,
 ) {
   const d =
-    e.endDate !== e.date
+    e.endDate !==
+    e.date
       ? `${fmtDate(
           e.date,
         )} – ${fmtDate(
           e.endDate,
         )}`
-      : fmtDate(e.date);
+      : fmtDate(
+          e.date,
+        );
 
   return `${d} · ${fmtTime(
     e.startTime,
@@ -847,9 +1024,11 @@ export function fmtWhen(
 export function entryLabel(
   e: KEvent,
 ) {
-  return e.entry === "free"
+  return e.entry ===
+    "free"
     ? "Free entry"
-    : e.entry === "paid"
+    : e.entry ===
+        "paid"
       ? e.fee
         ? `Paid · ${e.fee}`
         : "Paid entry"
@@ -902,21 +1081,31 @@ export type Filters = {
   confirmed: boolean;
 };
 
-export const DEFAULT_FILTERS: Filters = {
-  q: "",
-  category: "All",
-  subcategory: null,
-  date: "any",
-  from: "",
-  to: "",
-  district: null,
-  locality: "",
-  nearby: false,
-  entry: "any",
-  confirmed: false,
-};
+export const DEFAULT_FILTERS: Filters =
+  {
+    q: "",
+    category:
+      "All",
+    subcategory:
+      null,
+    date:
+      "any",
+    from: "",
+    to: "",
+    district:
+      null,
+    locality:
+      "",
+    nearby:
+      false,
+    entry:
+      "any",
+    confirmed:
+      false,
+  };
 
-export const NEARBY_KM = 25;
+export const NEARBY_KM =
+  25;
 
 const sod = (
   ms: number,
@@ -940,74 +1129,98 @@ export function dateRange(
   from = "",
   to = "",
 ): [number, number] | null {
-  const t = sod(now);
+  const t =
+    sod(now);
 
   switch (key) {
     case "today":
       return [
         t,
-        t + DAY - 1,
+        t +
+          DAY -
+          1,
       ];
 
     case "tomorrow":
       return [
-        t + DAY,
-        t + 2 * DAY - 1,
+        t +
+          DAY,
+        t +
+          2 * DAY -
+          1,
       ];
 
     case "week":
       return [
         t,
-        t + 7 * DAY - 1,
+        t +
+          7 * DAY -
+          1,
       ];
 
     case "month": {
       const d =
-        new Date(now);
+        new Date(
+          now,
+        );
 
       return [
         t,
         new Date(
           d.getFullYear(),
-          d.getMonth() + 1,
+          d.getMonth() +
+            1,
           1,
-        ).getTime() - 1,
+        ).getTime() -
+          1,
       ];
     }
 
     case "weekend": {
       const dow =
-        new Date(now).getDay();
+        new Date(
+          now,
+        ).getDay();
 
       const sat =
         dow === 0
           ? t - DAY
           : t +
-            ((6 - dow + 7) % 7) *
+            ((6 -
+              dow +
+              7) %
+              7) *
               DAY;
 
       return [
         sat,
-        sat + 2 * DAY - 1,
+        sat +
+          2 * DAY -
+          1,
       ];
     }
 
     case "custom": {
-      const a = from
-        ? new Date(
-            from +
-              "T00:00:00",
-          ).getTime()
-        : t;
+      const a =
+        from
+          ? new Date(
+              from +
+                "T00:00:00",
+            ).getTime()
+          : t;
 
-      const b = to
-        ? new Date(
-            to +
-              "T23:59:59",
-          ).getTime()
-        : Number.MAX_SAFE_INTEGER;
+      const b =
+        to
+          ? new Date(
+              to +
+                "T23:59:59",
+            ).getTime()
+          : Number.MAX_SAFE_INTEGER;
 
-      return [a, b];
+      return [
+        a,
+        b,
+      ];
     }
 
     default:
@@ -1040,13 +1253,20 @@ const SYN: Record<
   string,
   string
 > = {
-  soccer: "football",
-  gig: "concert",
-  gigs: "concert",
-  film: "movie",
-  movies: "movie",
-  show: "concert",
-  kids: "kid",
+  soccer:
+    "football",
+  gig:
+    "concert",
+  gigs:
+    "concert",
+  film:
+    "movie",
+  movies:
+    "movie",
+  show:
+    "concert",
+  kids:
+    "kid",
 };
 
 /* ============================================================
@@ -1072,7 +1292,8 @@ export function parseQuery(
 
   let date:
     | DateKey
-    | null = null;
+    | null =
+    null;
 
   const rules: [
     RegExp,
@@ -1111,41 +1332,59 @@ export function parseQuery(
   for (
     const [re, k] of rules
   ) {
-    if (re.test(s)) {
-      date = k;
+    if (
+      re.test(s)
+    ) {
+      date =
+        k;
 
-      s = s.replace(
-        re,
-        " ",
-      );
+      s =
+        s.replace(
+          re,
+          " ",
+        );
     }
   }
 
   const free =
-    / free /.test(s);
-
-  s = s.replace(
-    / free /,
-    " ",
-  );
-
-  const tokens = s
-    .split(/\s+/)
-    .filter(
-      (t) =>
-        t &&
-        !STOP.has(t),
-    )
-    .map(
-      (t) =>
-        SYN[t] ??
-        (
-          t.length > 4 &&
-          t.endsWith("s")
-            ? t.slice(0, -1)
-            : t
-        ),
+    / free /.test(
+      s,
     );
+
+  s =
+    s.replace(
+      / free /,
+      " ",
+    );
+
+  const tokens =
+    s
+      .split(
+        /\s+/,
+      )
+      .filter(
+        (t) =>
+          t &&
+          !STOP.has(
+            t,
+          ),
+      )
+      .map(
+        (t) =>
+          SYN[t] ??
+          (
+            t.length >
+              4 &&
+            t.endsWith(
+              "s",
+            )
+              ? t.slice(
+                  0,
+                  -1,
+                )
+              : t
+          ),
+      );
 
   return {
     tokens,
@@ -1165,20 +1404,34 @@ export function matchesDate(
   from = "",
   to = "",
 ) {
-  if (key === "any")
+  if (
+    key ===
+    "any"
+  )
     return true;
 
-  if (key === "now")
-    return (
-      statusOf(e, now) === "now"
-    );
-
-  if (key === "upcoming")
+  if (
+    key ===
+    "now"
+  )
     return (
       statusOf(
         e,
         now,
-      ) === "upcoming"
+      ) ===
+      "now"
+    );
+
+  if (
+    key ===
+    "upcoming"
+  )
+    return (
+      statusOf(
+        e,
+        now,
+      ) ===
+      "upcoming"
     );
 
   const r =
@@ -1191,10 +1444,10 @@ export function matchesDate(
 
   return (
     !r ||
-    (
-      e.startMs <= r[1] &&
-      e.endMs >= r[0]
-    )
+    (e.startMs <=
+      r[1] &&
+      e.endMs >=
+        r[0])
   );
 }
 
@@ -1211,7 +1464,9 @@ export function applyFilters(
     | null,
 ): KEvent[] {
   const pq =
-    parseQuery(f.q);
+    parseQuery(
+      f.q,
+    );
 
   const loc =
     f.locality
@@ -1221,12 +1476,16 @@ export function applyFilters(
   const out =
     events.filter(
       (e) => {
-        if (isFlagged(e))
+        if (
+          isFlagged(e)
+        )
           return false;
 
         if (
-          f.category !== "All" &&
-          e.category !== f.category
+          f.category !==
+            "All" &&
+          e.category !==
+            f.category
         )
           return false;
 
@@ -1261,25 +1520,30 @@ export function applyFilters(
               e.lat,
               e.lng,
             ],
-          ) > NEARBY_KM
+          ) >
+            NEARBY_KM
         )
           return false;
 
         if (
-          f.entry !== "any" &&
-          e.entry !== f.entry
+          f.entry !==
+            "any" &&
+          e.entry !==
+            f.entry
         )
           return false;
 
         if (
           pq.free &&
-          e.entry !== "free"
+          e.entry !==
+            "free"
         )
           return false;
 
         if (
           f.confirmed &&
-          e.upvotes < CONFIRMED_MIN
+          e.upvotes <
+            CONFIRMED_MIN
         )
           return false;
 
@@ -1306,7 +1570,9 @@ export function applyFilters(
 
         return pq.tokens.every(
           (t) =>
-            e.hay.includes(t),
+            e.hay.includes(
+              t,
+            ),
         );
       },
     );
@@ -1320,9 +1586,11 @@ export function applyFilters(
         now,
       );
 
-    return s === "now"
+    return s ===
+      "now"
       ? 0
-      : s === "upcoming"
+      : s ===
+          "upcoming"
         ? 1
         : 2;
   };
@@ -1348,7 +1616,9 @@ export function contextPlace(
     | string
     | null,
 ): string {
-  if (district)
+  if (
+    district
+  )
     return district;
 
   if (
@@ -1410,7 +1680,8 @@ function mode(
   ) {
     m.set(
       x,
-      (m.get(x) ?? 0) + 1,
+      (m.get(x) ??
+        0) + 1,
     );
   }
 
@@ -1419,7 +1690,8 @@ function mode(
         k: string;
         n: number;
       }
-    | null = null;
+    | null =
+    null;
 
   for (
     const [k, n] of m
