@@ -1,5 +1,3 @@
-import { createClient } from "supabase";
-
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
@@ -98,12 +96,16 @@ function decodeHtml(value: string): string {
  * Converts DuckDuckGo redirect links into the actual destination.
  *
  * Examples:
+ *
  * /l/?uddg=https%3A%2F%2Fexample.com
  *
  * or:
+ *
  * https://duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com
  */
-function extractRedirectUrl(href: string): string | null {
+function extractRedirectUrl(
+  href: string,
+): string | null {
   if (!href) return null;
 
   const decoded = decodeHtml(href).trim();
@@ -137,10 +139,6 @@ function extractRedirectUrl(href: string): string | null {
   }
 
   // Relative DuckDuckGo redirect.
-  //
-  // IMPORTANT:
-  // /html/ itself is NOT a candidate page.
-  // Only accept a relative URL if it contains a real uddg destination.
   if (decoded.startsWith("/")) {
     try {
       const url = new URL(
@@ -201,10 +199,6 @@ function parseDuckDuckGoResults(
 
     /*
      * Never treat DuckDuckGo itself as an event result.
-     *
-     * This prevents errors such as:
-     *
-     * Invalid URL: '/html/'
      */
     if (
       hostname === "duckduckgo.com" ||
@@ -322,7 +316,9 @@ async function searchDuckDuckGo(
 
   for (const searchUrl of urls) {
     try {
-      console.log(`Searching DuckDuckGo: ${query}`);
+      console.log(
+        `Searching DuckDuckGo: ${query}`,
+      );
 
       const response = await fetch(searchUrl, {
         headers,
@@ -346,7 +342,8 @@ async function searchDuckDuckGo(
         `DuckDuckGo returned ${html.length} characters`,
       );
 
-      const results = parseDuckDuckGoResults(html);
+      const results =
+        parseDuckDuckGoResults(html);
 
       console.log(
         `DuckDuckGo query "${query}" returned ${results.length} results`,
@@ -384,14 +381,17 @@ function getMetaContent(
       `<meta[^>]+property=["']${escaped}["'][^>]+content=["']([^"']+)["'][^>]*>`,
       "i",
     ),
+
     new RegExp(
       `<meta[^>]+content=["']([^"']+)["'][^>]+property=["']${escaped}["'][^>]*>`,
       "i",
     ),
+
     new RegExp(
       `<meta[^>]+name=["']${escaped}["'][^>]+content=["']([^"']+)["'][^>]*>`,
       "i",
     ),
+
     new RegExp(
       `<meta[^>]+content=["']([^"']+)["'][^>]+name=["']${escaped}["'][^>]*>`,
       "i",
@@ -501,14 +501,19 @@ function scoreCandidate(
   event: RequestBody,
 ): number {
   const titleText = normalize(event.title);
-  const subcategoryText = normalize(event.subcategory);
+  const subcategoryText =
+    normalize(event.subcategory);
   const venueText = normalize(event.venue);
-  const localityText = normalize(event.locality);
-  const districtText = normalize(event.district);
-  const categoryText = normalize(event.category);
-
-  const resultTitle = normalize(result.title);
-  const resultUrl = normalize(result.url);
+  const localityText =
+    normalize(event.locality);
+  const districtText =
+    normalize(event.district);
+  const categoryText =
+    normalize(event.category);
+  const resultTitle =
+    normalize(result.title);
+  const resultUrl =
+    normalize(result.url);
 
   let score = 0;
 
@@ -605,23 +610,38 @@ function scoreCandidate(
 function buildQueries(
   event: RequestBody,
 ): string[] {
-  const title = (event.title ?? "").trim();
-  const locality = (event.locality ?? "").trim();
-  const district = (event.district ?? "").trim();
-  const subcategory = (event.subcategory ?? "").trim();
-  const venue = (event.venue ?? "").trim();
+  const title =
+    (event.title ?? "").trim();
+
+  const locality =
+    (event.locality ?? "").trim();
+
+  const district =
+    (event.district ?? "").trim();
+
+  const subcategory =
+    (event.subcategory ?? "").trim();
+
+  const venue =
+    (event.venue ?? "").trim();
 
   const queries = [
     title,
     title ? `${title} comedian` : "",
     title ? `${title} artist` : "",
     title ? `${title} event` : "",
-    title && locality ? `${title} ${locality}` : "",
-    title && district ? `${title} ${district}` : "",
+    title && locality
+      ? `${title} ${locality}`
+      : "",
+    title && district
+      ? `${title} ${district}`
+      : "",
     title && subcategory
       ? `${title} ${subcategory}`
       : "",
-    title && venue ? `${title} ${venue}` : "",
+    title && venue
+      ? `${title} ${venue}`
+      : "",
   ];
 
   const unique: string[] = [];
@@ -655,18 +675,20 @@ async function discoverImage(
 
   /*
    * Search progressively.
-   *
-   * We don't use one huge over-constrained query.
    */
   for (const query of queries.slice(0, 7)) {
-    const results = await searchDuckDuckGo(query);
+    const results =
+      await searchDuckDuckGo(query);
 
     for (const result of results) {
-      const normalizedUrl = cleanUrl(result.url);
+      const normalizedUrl =
+        cleanUrl(result.url);
 
       if (!normalizedUrl) continue;
 
-      if (seenUrls.has(normalizedUrl)) continue;
+      if (seenUrls.has(normalizedUrl)) {
+        continue;
+      }
 
       seenUrls.add(normalizedUrl);
 
@@ -702,16 +724,18 @@ async function discoverImage(
    * Fetch candidate pages and inspect their metadata.
    */
   for (const result of allResults.slice(0, 20)) {
-    const page = await fetchPage(result.url);
+    const page =
+      await fetchPage(result.url);
 
     if (!page) {
       continue;
     }
 
-    const imageUrl = extractPageImage(
-      page.html,
-      page.finalUrl,
-    );
+    const imageUrl =
+      extractPageImage(
+        page.html,
+        page.finalUrl,
+      );
 
     if (!imageUrl) {
       console.log(
@@ -721,10 +745,11 @@ async function discoverImage(
       continue;
     }
 
-    const score = scoreCandidate(
-      result,
-      event,
-    );
+    const score =
+      scoreCandidate(
+        result,
+        event,
+      );
 
     console.log(
       `Candidate: ${result.url} | score=${score} | image=${imageUrl}`,
@@ -770,256 +795,14 @@ async function discoverImage(
   return best.imageUrl;
 }
 
-function getImageExtension(
-  contentType: string,
-  url: string,
-): string {
-  const type = contentType.toLowerCase();
-
-  if (type.includes("image/jpeg")) {
-    return "jpg";
-  }
-
-  if (type.includes("image/png")) {
-    return "png";
-  }
-
-  if (type.includes("image/webp")) {
-    return "webp";
-  }
-
-  if (type.includes("image/gif")) {
-    return "gif";
-  }
-
-  if (type.includes("image/avif")) {
-    return "avif";
-  }
-
-  try {
-    const pathname = new URL(url).pathname.toLowerCase();
-
-    if (pathname.endsWith(".jpeg")) return "jpg";
-    if (pathname.endsWith(".jpg")) return "jpg";
-    if (pathname.endsWith(".png")) return "png";
-    if (pathname.endsWith(".webp")) return "webp";
-    if (pathname.endsWith(".gif")) return "gif";
-    if (pathname.endsWith(".avif")) return "avif";
-  } catch {
-    // Ignore invalid URL extension.
-  }
-
-  return "jpg";
-}
-
-async function downloadImage(
-  imageUrl: string,
-): Promise<{
-  bytes: Uint8Array;
-  contentType: string;
-  extension: string;
-} | null> {
-  try {
-    const response = await fetch(imageUrl, {
-      redirect: "follow",
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36",
-        Accept:
-          "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
-        Referer: imageUrl,
-      },
-    });
-
-    if (!response.ok) {
-      console.warn(
-        `Could not download image: HTTP ${response.status}`,
-      );
-
-      return null;
-    }
-
-    const contentType =
-      response.headers.get("content-type") ??
-      "image/jpeg";
-
-    if (!contentType.toLowerCase().startsWith("image/")) {
-      console.warn(
-        `URL did not return an image: ${contentType}`,
-      );
-
-      return null;
-    }
-
-    const contentLengthHeader =
-      response.headers.get("content-length");
-
-    if (contentLengthHeader) {
-      const contentLength =
-        Number(contentLengthHeader);
-
-      if (
-        Number.isFinite(contentLength) &&
-        contentLength > 12 * 1024 * 1024
-      ) {
-        console.warn(
-          "Image is larger than 12 MB.",
-        );
-
-        return null;
-      }
-    }
-
-    const buffer = await response.arrayBuffer();
-
-    if (buffer.byteLength === 0) {
-      return null;
-    }
-
-    if (buffer.byteLength > 12 * 1024 * 1024) {
-      console.warn(
-        "Downloaded image is larger than 12 MB.",
-      );
-
-      return null;
-    }
-
-    const bytes = new Uint8Array(buffer);
-
-    const extension = getImageExtension(
-      contentType,
-      imageUrl,
-    );
-
-    return {
-      bytes,
-      contentType,
-      extension,
-    };
-  } catch (error) {
-    console.warn(
-      `Could not download image ${imageUrl}:`,
-      error,
-    );
-
-    return null;
-  }
-}
-
-function createStorageClient() {
-  const supabaseUrl =
-    Deno.env.get("SUPABASE_URL");
-
-  const serviceRoleKey =
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-
-  if (!supabaseUrl) {
-    throw new Error(
-      "SUPABASE_URL environment variable is missing.",
-    );
-  }
-
-  if (!serviceRoleKey) {
-    throw new Error(
-      "SUPABASE_SERVICE_ROLE_KEY environment variable is missing.",
-    );
-  }
-
-  return createClient(
-    supabaseUrl,
-    serviceRoleKey,
-    {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-      },
-    },
-  );
-}
-
-async function saveImageToStorage(
-  imageUrl: string,
-): Promise<string | null> {
-  const downloaded =
-    await downloadImage(imageUrl);
-
-  if (!downloaded) {
-    return null;
-  }
-
-  try {
-    const supabase =
-      createStorageClient();
-
-    const fileName =
-      `auto-${crypto.randomUUID()}.${downloaded.extension}`;
-
-    const filePath =
-      fileName;
-
-    const { error: uploadError } =
-      await supabase.storage
-        .from("event-posters")
-        .upload(
-          filePath,
-          downloaded.bytes,
-          {
-            contentType:
-              downloaded.contentType,
-            upsert: false,
-            cacheControl: "31536000",
-          },
-        );
-
-    if (uploadError) {
-      console.error(
-        "Failed to upload automatic image:",
-        uploadError,
-      );
-
-      return null;
-    }
-
-    const {
-      data: publicUrlData,
-    } = supabase.storage
-      .from("event-posters")
-      .getPublicUrl(filePath);
-
-    if (!publicUrlData?.publicUrl) {
-      console.error(
-        "Could not generate public storage URL.",
-      );
-
-      return null;
-    }
-
-    console.log(
-      `Saved automatic image: ${publicUrlData.publicUrl}`,
-    );
-
-    return publicUrlData.publicUrl;
-  } catch (error) {
-    console.error(
-      "Failed to save image to storage:",
-      error,
-    );
-
-    return null;
-  }
-}
-
 Deno.serve(async (req) => {
   /*
    * CORS preflight.
    */
   if (req.method === "OPTIONS") {
-    return new Response(
-      "ok",
-      {
-        headers: corsHeaders,
-      },
-    );
+    return new Response("ok", {
+      headers: corsHeaders,
+    });
   }
 
   if (req.method !== "POST") {
@@ -1032,8 +815,7 @@ Deno.serve(async (req) => {
         status: 405,
         headers: {
           ...corsHeaders,
-          "Content-Type":
-            "application/json",
+          "Content-Type": "application/json",
         },
       },
     );
@@ -1070,8 +852,7 @@ Deno.serve(async (req) => {
           status: 400,
           headers: {
             ...corsHeaders,
-            "Content-Type":
-              "application/json",
+            "Content-Type": "application/json",
           },
         },
       );
@@ -1084,7 +865,8 @@ Deno.serve(async (req) => {
      * If the event has an official website or ticket URL,
      * try that page first.
      *
-     * This gives official event posters priority.
+     * The image URL is returned directly.
+     * Nothing is downloaded or stored.
      * ---------------------------------------------------------
      */
     const directUrls = [
@@ -1097,9 +879,8 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      const url = cleanUrl(
-        rawUrl.trim(),
-      );
+      const url =
+        cleanUrl(rawUrl.trim());
 
       if (!url) {
         continue;
@@ -1134,34 +915,26 @@ Deno.serve(async (req) => {
         `Found image from official/direct URL: ${imageUrl}`,
       );
 
-      const storedUrl =
-        await saveImageToStorage(
+      return new Response(
+        JSON.stringify({
           imageUrl,
-        );
-
-      if (storedUrl) {
-        return new Response(
-          JSON.stringify({
-            imageUrl: storedUrl,
-            method: "official-url",
-          }),
-          {
-            status: 200,
-            headers: {
-              ...corsHeaders,
-              "Content-Type":
-                "application/json",
-            },
+          method: "official-url",
+        }),
+        {
+          status: 200,
+          headers: {
+            ...corsHeaders,
+            "Content-Type": "application/json",
           },
-        );
-      }
+        },
+      );
     }
 
     /*
      * ---------------------------------------------------------
      * STEP 2
      *
-     * Search DuckDuckGo using simple event-title queries.
+     * Search DuckDuckGo using event-title queries.
      * ---------------------------------------------------------
      */
     const discoveredImage =
@@ -1186,8 +959,7 @@ Deno.serve(async (req) => {
           status: 200,
           headers: {
             ...corsHeaders,
-            "Content-Type":
-              "application/json",
+            "Content-Type": "application/json",
           },
         },
       );
@@ -1197,51 +969,27 @@ Deno.serve(async (req) => {
      * ---------------------------------------------------------
      * STEP 3
      *
-     * Download the discovered image and store it in the
-     * existing event-posters bucket.
+     * Return the original image URL directly.
+     *
+     * IMPORTANT:
+     * No downloading.
+     * No Supabase Storage upload.
      * ---------------------------------------------------------
      */
-    const storedUrl =
-      await saveImageToStorage(
-        discoveredImage,
-      );
-
-    if (!storedUrl) {
-      console.warn(
-        "Image was discovered but could not be saved to storage.",
-      );
-
-      return new Response(
-        JSON.stringify({
-          imageUrl: null,
-          method: "none",
-        }),
-        {
-          status: 200,
-          headers: {
-            ...corsHeaders,
-            "Content-Type":
-              "application/json",
-          },
-        },
-      );
-    }
-
     console.log(
-      `Automatic image search succeeded: ${storedUrl}`,
+      `Automatic image search succeeded: ${discoveredImage}`,
     );
 
     return new Response(
       JSON.stringify({
-        imageUrl: storedUrl,
+        imageUrl: discoveredImage,
         method: "duckduckgo",
       }),
       {
         status: 200,
         headers: {
           ...corsHeaders,
-          "Content-Type":
-            "application/json",
+          "Content-Type": "application/json",
         },
       },
     );
@@ -1268,8 +1016,7 @@ Deno.serve(async (req) => {
         status: 200,
         headers: {
           ...corsHeaders,
-          "Content-Type":
-            "application/json",
+          "Content-Type": "application/json",
         },
       },
     );
