@@ -1,4 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import {
@@ -10,8 +15,14 @@ import {
   RotateCcw,
   Search,
 } from "lucide-react";
-import { CATEGORY_META, type KEvent } from "@/lib/events";
-import { KERALA_BOUNDS, loadDistrictGeo } from "@/lib/geo";
+import {
+  CATEGORY_META,
+  type KEvent,
+} from "@/lib/events";
+import {
+  KERALA_BOUNDS,
+  loadDistrictGeo,
+} from "@/lib/geo";
 
 export type Viewport = {
   zoom: number;
@@ -34,7 +45,9 @@ type Props = {
 
   fit?: {
     key: string;
-    bounds: [[number, number], [number, number]] | null;
+    bounds:
+      | [[number, number], [number, number]]
+      | null;
   };
 
   pick?: {
@@ -146,27 +159,51 @@ function extractKeralaRings(
     if (!geometry) continue;
 
     if (geometry.type === "Polygon") {
-      const outer = geometry.coordinates?.[0];
+      const outer =
+        geometry.coordinates?.[0];
 
-      if (Array.isArray(outer) && outer.length >= 3) {
+      if (
+        Array.isArray(outer) &&
+        outer.length >= 3
+      ) {
         rings.push(
           outer.map(
-            ([lng, lat]: [number, number]) =>
-              [lat, lng] as [number, number],
+            ([lng, lat]: [
+              number,
+              number,
+            ]) =>
+              [lat, lng] as [
+                number,
+                number,
+              ],
           ),
         );
       }
     }
 
-    if (geometry.type === "MultiPolygon") {
-      for (const polygon of geometry.coordinates ?? []) {
-        const outer = polygon?.[0];
+    if (
+      geometry.type ===
+      "MultiPolygon"
+    ) {
+      for (const polygon of
+        geometry.coordinates ?? []) {
+        const outer =
+          polygon?.[0];
 
-        if (Array.isArray(outer) && outer.length >= 3) {
+        if (
+          Array.isArray(outer) &&
+          outer.length >= 3
+        ) {
           rings.push(
             outer.map(
-              ([lng, lat]: [number, number]) =>
-                [lat, lng] as [number, number],
+              ([lng, lat]: [
+                number,
+                number,
+              ]) =>
+                [lat, lng] as [
+                  number,
+                  number,
+                ],
             ),
           );
         }
@@ -177,34 +214,77 @@ function extractKeralaRings(
   return rings;
 }
 
-export default function EventMap(p: Props) {
-  const box = useRef<HTMLDivElement>(null);
-  const el = useRef<HTMLDivElement>(null);
+export default function EventMap(
+  p: Props,
+) {
+  const box =
+    useRef<HTMLDivElement>(null);
 
-  const map = useRef<L.Map | null>(null);
-  const layer = useRef<L.LayerGroup | null>(null);
+  const el =
+    useRef<HTMLDivElement>(null);
 
-  const pickMk = useRef<L.Marker | null>(null);
-  const meMk = useRef<L.CircleMarker | null>(null);
+  const map =
+    useRef<L.Map | null>(null);
 
-  const props = useRef(p);
+  const layer =
+    useRef<L.LayerGroup | null>(null);
+
+  const pickMk =
+    useRef<L.Marker | null>(null);
+
+  const meMk =
+    useRef<L.CircleMarker | null>(
+      null,
+    );
+
+  const props =
+    useRef(p);
+
   props.current = p;
 
-  const placeSearchTimer = useRef<number | null>(null);
+  const placeSearchTimer =
+    useRef<number | null>(null);
 
-  const [note, setNote] = useState("");
-  const [full, setFull] = useState(false);
-  const [canFull, setCanFull] = useState(false);
+  const [note, setNote] =
+    useState("");
 
-  const [placeQuery, setPlaceQuery] = useState("");
-  const [placeResults, setPlaceResults] = useState<
-    SearchResult[]
-  >([]);
-  const [placeSearching, setPlaceSearching] =
-    useState(false);
-  const [placeSearchOpen, setPlaceSearchOpen] =
+  const [full, setFull] =
     useState(false);
 
+  const [canFull, setCanFull] =
+    useState(false);
+
+  const [placeQuery, setPlaceQuery] =
+    useState("");
+
+  const [
+    placeResults,
+    setPlaceResults,
+  ] = useState<SearchResult[]>(
+    [],
+  );
+
+  const [
+    placeSearching,
+    setPlaceSearching,
+  ] = useState(false);
+
+  const [
+    placeSearchOpen,
+    setPlaceSearchOpen,
+  ] = useState(false);
+
+  /*
+   * ============================================================
+   * DRAW MAP MARKERS
+   *
+   * Zoom <= 8:
+   *   One marker per district with total event count.
+   *
+   * Zoom > 8:
+   *   Show every event individually.
+   * ============================================================
+   */
   const draw = useCallback(() => {
     const m = map.current;
     const g = layer.current;
@@ -220,15 +300,126 @@ export default function EventMap(p: Props) {
     } = props.current;
 
     const zoom = m.getZoom();
-    const view = m.getBounds().pad(0.3);
 
-    const groups = new Map<string, KEvent[]>();
+    const view =
+      m.getBounds().pad(0.3);
 
-    let index = 0;
-
-    const CLUSTER_PX = 56;
-    const NO_CLUSTER_ZOOM = 16;
     const DISTRICT_ZOOM = 8;
+
+    if (zoom <= DISTRICT_ZOOM) {
+      const districtGroups =
+        new Map<
+          string,
+          KEvent[]
+        >();
+
+      for (const event of events) {
+        if (!event.district) {
+          continue;
+        }
+
+        const existing =
+          districtGroups.get(
+            event.district,
+          );
+
+        if (existing) {
+          existing.push(event);
+        } else {
+          districtGroups.set(
+            event.district,
+            [event],
+          );
+        }
+      }
+
+      for (const [
+        district,
+        districtEvents,
+      ] of districtGroups) {
+        if (
+          districtEvents.length === 0
+        ) {
+          continue;
+        }
+
+        const lat =
+          districtEvents.reduce(
+            (sum, event) =>
+              sum + event.lat,
+            0,
+          ) /
+          districtEvents.length;
+
+        const lng =
+          districtEvents.reduce(
+            (sum, event) =>
+              sum + event.lng,
+            0,
+          ) /
+          districtEvents.length;
+
+        const marker =
+          L.marker(
+            [lat, lng],
+            {
+              pane:
+                "eventMarkers",
+
+              icon:
+                clusterIcon(
+                  districtEvents.length,
+                  district,
+                ),
+
+              title: `${district} — ${districtEvents.length} ${
+                districtEvents.length ===
+                1
+                  ? "event"
+                  : "events"
+              }`,
+            },
+          );
+
+        marker.on(
+          "click",
+          () => {
+            const bounds =
+              L.latLngBounds(
+                districtEvents.map(
+                  (event) =>
+                    [
+                      event.lat,
+                      event.lng,
+                    ] as [
+                      number,
+                      number,
+                    ],
+                ),
+              );
+
+            m.fitBounds(
+              bounds,
+              {
+                padding: [
+                  60,
+                  60,
+                ],
+                maxZoom: 13,
+                animate: true,
+              },
+            );
+          },
+        );
+
+        marker.addTo(g);
+      }
+
+      return;
+    }
+
+    const seen =
+      new Map<string, number>();
 
     for (const event of events) {
       if (
@@ -240,176 +431,65 @@ export default function EventMap(p: Props) {
         continue;
       }
 
-      let key: string;
+      const coordinateKey =
+        `${event.lat},${event.lng}`;
 
-      /*
-       * At high zoom show individual events.
-       */
-      if (zoom >= NO_CLUSTER_ZOOM) {
-        key = `event-${index++}`;
-      }
-
-      /*
-       * At low zoom group by district.
-       */
-      else if (zoom <= DISTRICT_ZOOM) {
-        key = `district-${event.district ?? "unknown"}`;
-      }
-
-      /*
-       * At medium zoom use pixel-grid clustering.
-       */
-      else {
-        const point = m.project(
-          [event.lat, event.lng],
-          zoom,
-        );
-
-        key =
-          `${Math.floor(point.x / CLUSTER_PX)}:` +
-          `${Math.floor(point.y / CLUSTER_PX)}`;
-      }
-
-      const existing = groups.get(key);
-
-      if (existing) {
-        existing.push(event);
-      } else {
-        groups.set(key, [event]);
-      }
-    }
-
-    const seen = new Map<string, number>();
-
-    for (const [key, list] of groups) {
-      const first = list[0];
-
-      if (!first) continue;
-
-      /*
-       * Single event.
-       */
-      if (list.length === 1) {
-        const coordinateKey =
-          `${first.lat},${first.lng}`;
-
-        const occurrence =
-          seen.get(coordinateKey) ?? 0;
-
-        seen.set(
+      const occurrence =
+        seen.get(
           coordinateKey,
-          occurrence + 1,
-        );
+        ) ?? 0;
 
-        const offset =
-          occurrence * 0.00007;
+      seen.set(
+        coordinateKey,
+        occurrence + 1,
+      );
 
-        const meta =
-          CATEGORY_META[first.category];
+      const offset =
+        occurrence * 0.00007;
 
-        const marker = L.marker(
+      const meta =
+        CATEGORY_META[
+          event.category
+        ];
+
+      const marker =
+        L.marker(
           [
-            first.lat + offset,
-            first.lng + offset,
+            event.lat +
+              offset,
+            event.lng +
+              offset,
           ],
           {
-            pane: "eventMarkers",
+            pane:
+              "eventMarkers",
 
-            icon: pinIcon(
-              meta.hex,
-              meta.icon,
-              first.id === selectedId,
-            ),
+            icon:
+              pinIcon(
+                meta.hex,
+                meta.icon,
+                event.id ===
+                  selectedId,
+              ),
 
-            title: first.title,
+            title:
+              event.title,
 
             zIndexOffset:
-              first.id === selectedId
+              event.id ===
+              selectedId
                 ? 1000
                 : 0,
 
-            riseOnHover: true,
+            riseOnHover:
+              true,
           },
         );
-
-        marker.on(
-          "click",
-          () => {
-            onSelect?.(first);
-          },
-        );
-
-        marker.addTo(g);
-
-        continue;
-      }
-
-      /*
-       * Cluster.
-       */
-      const lat =
-        list.reduce(
-          (sum, event) =>
-            sum + event.lat,
-          0,
-        ) / list.length;
-
-      const lng =
-        list.reduce(
-          (sum, event) =>
-            sum + event.lng,
-          0,
-        ) / list.length;
-
-      /*
-       * first.district can be null.
-       * Convert null to undefined because
-       * clusterIcon expects string | undefined.
-       */
-      const label: string | undefined =
-        key.startsWith("district-")
-          ? first.district ?? undefined
-          : undefined;
-
-      const marker = L.marker(
-        [lat, lng],
-        {
-          pane: "eventMarkers",
-
-          icon: clusterIcon(
-            list.length,
-            label,
-          ),
-
-          title: `${
-            label
-              ? `${label} — `
-              : ""
-          }${list.length} events`,
-        },
-      );
 
       marker.on(
         "click",
         () => {
-          m.fitBounds(
-            L.latLngBounds(
-              list.map(
-                (event) =>
-                  [
-                    event.lat,
-                    event.lng,
-                  ] as [
-                    number,
-                    number,
-                  ],
-              ),
-            ),
-            {
-              padding: [70, 70],
-              maxZoom: 17,
-            },
-          );
+          onSelect?.(event);
         },
       );
 
@@ -417,13 +497,11 @@ export default function EventMap(p: Props) {
     }
   }, []);
 
-  /*
-   * Search places using OpenStreetMap Nominatim.
-   */
   async function searchPlaces(
     query: string,
   ) {
-    const trimmed = query.trim();
+    const trimmed =
+      query.trim();
 
     if (trimmed.length < 2) {
       setPlaceResults([]);
@@ -444,11 +522,13 @@ export default function EventMap(p: Props) {
           addressdetails: "1",
         }).toString();
 
-      const response = await fetch(url, {
-        headers: {
-          Accept: "application/json",
-        },
-      });
+      const response =
+        await fetch(url, {
+          headers: {
+            Accept:
+              "application/json",
+          },
+        });
 
       if (!response.ok) {
         throw new Error(
@@ -459,36 +539,45 @@ export default function EventMap(p: Props) {
       const data =
         (await response.json()) as SearchResult[];
 
-      /*
-       * Keep only results that fall inside
-       * the Kerala bounding box.
-       */
       const [
         [south, west],
         [north, east],
       ] = KERALA_BOUNDS;
 
       const keralaResults =
-        data.filter((result) => {
-          const lat = Number(result.lat);
-          const lng = Number(result.lon);
+        data.filter(
+          (result) => {
+            const lat =
+              Number(result.lat);
 
-          return (
-            Number.isFinite(lat) &&
-            Number.isFinite(lng) &&
-            lat >= south &&
-            lat <= north &&
-            lng >= west &&
-            lng <= east
-          );
-        });
+            const lng =
+              Number(result.lon);
+
+            return (
+              Number.isFinite(
+                lat,
+              ) &&
+              Number.isFinite(
+                lng,
+              ) &&
+              lat >= south &&
+              lat <= north &&
+              lng >= west &&
+              lng <= east
+            );
+          },
+        );
 
       setPlaceResults(
-        keralaResults.slice(0, 5),
+        keralaResults.slice(
+          0,
+          5,
+        ),
       );
 
       setPlaceSearchOpen(
-        keralaResults.length > 0,
+        keralaResults.length >
+          0,
       );
     } catch {
       setPlaceResults([]);
@@ -498,40 +587,46 @@ export default function EventMap(p: Props) {
     }
   }
 
-  /*
-   * Debounced place search.
-   */
   function handlePlaceQueryChange(
     value: string,
   ) {
     setPlaceQuery(value);
 
-    if (placeSearchTimer.current) {
+    if (
+      placeSearchTimer.current
+    ) {
       window.clearTimeout(
         placeSearchTimer.current,
       );
     }
 
-    if (value.trim().length < 2) {
+    if (
+      value.trim().length < 2
+    ) {
       setPlaceResults([]);
       setPlaceSearchOpen(false);
       return;
     }
 
     placeSearchTimer.current =
-      window.setTimeout(() => {
-        void searchPlaces(value);
-      }, 500);
+      window.setTimeout(
+        () => {
+          void searchPlaces(
+            value,
+          );
+        },
+        500,
+      );
   }
 
-  /*
-   * Select a search result.
-   */
   function selectPlace(
     result: SearchResult,
   ) {
-    const lat = Number(result.lat);
-    const lng = Number(result.lon);
+    const lat =
+      Number(result.lat);
+
+    const lng =
+      Number(result.lon);
 
     if (
       !Number.isFinite(lat) ||
@@ -544,17 +639,11 @@ export default function EventMap(p: Props) {
 
     if (!m) return;
 
-    /*
-     * Set the event location.
-     */
     props.current.onPick?.(
       lat,
       lng,
     );
 
-    /*
-     * Move the map to the selected place.
-     */
     m.flyTo(
       [lat, lng],
       Math.max(
@@ -566,10 +655,6 @@ export default function EventMap(p: Props) {
       },
     );
 
-    /*
-     * Keep the search field compact by
-     * showing the place name.
-     */
     setPlaceQuery(
       result.display_name
         .split(",")[0] ??
@@ -580,9 +665,6 @@ export default function EventMap(p: Props) {
     setPlaceSearchOpen(false);
   }
 
-  /*
-   * Initialise map.
-   */
   useEffect(() => {
     if (!el.current) return;
 
@@ -611,14 +693,17 @@ export default function EventMap(p: Props) {
         initial.zoom,
       );
     } else {
-      m.fitBounds(
-        KERALA_BOUNDS,
+      /*
+       * Start with a reasonable Kerala-wide
+       * fallback view until the actual GeoJSON
+       * boundary is loaded.
+       */
+      m.setView(
+        [10.35, 76.25],
+        8.5,
       );
     }
 
-    /*
-     * Base OpenStreetMap layer.
-     */
     L.tileLayer(
       "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
       {
@@ -628,9 +713,6 @@ export default function EventMap(p: Props) {
       },
     ).addTo(m);
 
-    /*
-     * Grey overlay pane.
-     */
     m.createPane(
       "outsideKerala",
     );
@@ -648,9 +730,6 @@ export default function EventMap(p: Props) {
         "none";
     }
 
-    /*
-     * Kerala boundary pane.
-     */
     m.createPane(
       "keralaBoundary",
     );
@@ -668,9 +747,6 @@ export default function EventMap(p: Props) {
         "none";
     }
 
-    /*
-     * Event markers pane.
-     */
     m.createPane(
       "eventMarkers",
     );
@@ -690,9 +766,6 @@ export default function EventMap(p: Props) {
 
     map.current = m;
 
-    /*
-     * Load Kerala district GeoJSON.
-     */
     void loadDistrictGeo().then(
       (geo) => {
         if (
@@ -708,8 +781,34 @@ export default function EventMap(p: Props) {
           );
 
         /*
-         * World-sized polygon.
+         * Fit to the ACTUAL GeoJSON bounds,
+         * not the larger KERALA_BOUNDS rectangle.
+         *
+         * This makes the whole of Kerala visible
+         * while keeping the map as close as possible.
          */
+        if (
+          !initial &&
+          rings.length > 0
+        ) {
+          const actualKeralaBounds =
+            L.latLngBounds(
+              rings.flat(),
+            );
+
+          m.fitBounds(
+            actualKeralaBounds,
+            {
+              padding: [
+                18,
+                18,
+              ],
+              animate: false,
+              maxZoom: 9,
+            },
+          );
+        }
+
         const world: [
           number,
           number,
@@ -721,10 +820,9 @@ export default function EventMap(p: Props) {
           [90, -180],
         ];
 
-        if (rings.length > 0) {
-          /*
-           * Grey overlay outside Kerala.
-           */
+        if (
+          rings.length > 0
+        ) {
           L.polygon(
             [
               world,
@@ -739,7 +837,8 @@ export default function EventMap(p: Props) {
               fillColor:
                 "#d1d5db",
 
-              fillOpacity: 0.62,
+              fillOpacity:
+                0.62,
 
               fillRule:
                 "evenodd",
@@ -749,9 +848,6 @@ export default function EventMap(p: Props) {
           ).addTo(m);
         }
 
-        /*
-         * Kerala district boundaries.
-         */
         L.geoJSON(
           geo as never,
           {
@@ -769,16 +865,16 @@ export default function EventMap(p: Props) {
               fillColor:
                 "#0f5c4d",
 
-              fillOpacity: 0.06,
+              fillOpacity:
+                0.06,
             },
           },
         ).addTo(m);
+
+        draw();
       },
     );
 
-    /*
-     * Redraw when map moves.
-     */
     m.on(
       "moveend",
       () => {
@@ -802,9 +898,6 @@ export default function EventMap(p: Props) {
       },
     );
 
-    /*
-     * Pick event location.
-     */
     m.on(
       "click",
       (
@@ -818,9 +911,6 @@ export default function EventMap(p: Props) {
       },
     );
 
-    /*
-     * Resize handling.
-     */
     const resizeObserver =
       new ResizeObserver(
         () => {
@@ -878,10 +968,6 @@ export default function EventMap(p: Props) {
     };
   }, [draw]);
 
-  /*
-   * Redraw markers when events
-   * or selected event changes.
-   */
   useEffect(() => {
     draw();
   }, [
@@ -890,9 +976,6 @@ export default function EventMap(p: Props) {
     draw,
   ]);
 
-  /*
-   * Fit to requested bounds.
-   */
   useEffect(() => {
     const m = map.current;
 
@@ -903,16 +986,16 @@ export default function EventMap(p: Props) {
       m.fitBounds(
         bounds,
         {
-          padding: [40, 40],
+          padding: [
+            40,
+            40,
+          ],
           maxZoom: 13,
         },
       );
     }
   }, [p.fit?.key]);
 
-  /*
-   * Focus selected event.
-   */
   useEffect(() => {
     const m = map.current;
 
@@ -936,20 +1019,21 @@ export default function EventMap(p: Props) {
     }
   }, [p.focus?.id]);
 
-  /*
-   * Event location picker.
-   */
   useEffect(() => {
     const m = map.current;
 
-    if (!m || !p.onPick) {
+    if (
+      !m ||
+      !p.onPick
+    ) {
       return;
     }
 
     if (!p.pick) {
       pickMk.current?.remove();
 
-      pickMk.current = null;
+      pickMk.current =
+        null;
 
       return;
     }
@@ -977,11 +1061,12 @@ export default function EventMap(p: Props) {
 
           draggable: true,
 
-          icon: pinIcon(
-            "#c2410c",
-            "📍",
-            true,
-          ),
+          icon:
+            pinIcon(
+              "#c2410c",
+              "📍",
+              true,
+            ),
 
           title:
             "Event location — drag to adjust",
@@ -1024,15 +1109,14 @@ export default function EventMap(p: Props) {
     }
   }
 
-  /*
-   * Locate user.
-   */
   function locate() {
     const m = map.current;
 
     if (!m) return;
 
-    if (!navigator.geolocation) {
+    if (
+      !navigator.geolocation
+    ) {
       say(
         "Location isn't available on this device.",
       );
@@ -1156,7 +1240,6 @@ export default function EventMap(p: Props) {
         aria-label="Interactive map of events in Kerala"
       />
 
-      {/* Place search — shown only while publishing/picking a location. */}
       {p.onPick && (
         <div className="absolute left-3 top-3 z-[500] w-[min(380px,calc(100%-6rem))]">
           <div className="relative">
@@ -1211,13 +1294,19 @@ export default function EventMap(p: Props) {
                   {placeResults.map(
                     (result) => {
                       const parts =
-                        result.display_name
-                          .split(",");
+                        result.display_name.split(
+                          ",",
+                        );
 
                       const title =
                         parts
-                          .slice(0, 2)
-                          .join(",")
+                          .slice(
+                            0,
+                            2,
+                          )
+                          .join(
+                            ",",
+                          )
                           .trim();
 
                       return (
@@ -1234,7 +1323,9 @@ export default function EventMap(p: Props) {
                           }
                         >
                           <div className="text-sm font-medium text-foreground">
-                            {title}
+                            {
+                              title
+                            }
                           </div>
 
                           <div className="mt-0.5 truncate text-xs text-muted-foreground">
@@ -1252,7 +1343,6 @@ export default function EventMap(p: Props) {
         </div>
       )}
 
-      {/* Map controls. */}
       <div
         className="absolute right-3 top-3 z-[500] flex flex-col overflow-hidden rounded-md border border-border shadow-sm"
         role="group"
@@ -1288,7 +1378,9 @@ export default function EventMap(p: Props) {
             aria-label="Show my location"
             title="Show my location"
           >
-            <LocateFixed size={18} />
+            <LocateFixed
+              size={18}
+            />
           </button>
         )}
 
@@ -1304,7 +1396,9 @@ export default function EventMap(p: Props) {
             aria-label="Reset to Kerala"
             title="Reset to Kerala"
           >
-            <RotateCcw size={18} />
+            <RotateCcw
+              size={18}
+            />
           </button>
         )}
 
@@ -1323,9 +1417,13 @@ export default function EventMap(p: Props) {
               }
             >
               {full ? (
-                <Minimize2 size={18} />
+                <Minimize2
+                  size={18}
+                />
               ) : (
-                <Maximize2 size={18} />
+                <Maximize2
+                  size={18}
+                />
               )}
             </button>
           )}
