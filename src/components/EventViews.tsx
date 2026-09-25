@@ -314,6 +314,175 @@ export function EventPreview({
   onClose: () => void;
   mobile?: boolean;
 }) {
+  /*
+   * ----------------------------------------------------------
+   * DESKTOP
+   *
+   * Completely separate from the mobile gesture system.
+   * This prevents mobile sheet changes from affecting
+   * laptop/desktop rendering.
+   * ----------------------------------------------------------
+   */
+
+  if (!mobile) {
+    return (
+      <DesktopEventPreview
+        e={e}
+        onClose={onClose}
+      />
+    );
+  }
+
+  /*
+   * ----------------------------------------------------------
+   * MOBILE / TABLET
+   * ----------------------------------------------------------
+   */
+
+  return (
+    <MobileEventPreview
+      e={e}
+      onClose={onClose}
+    />
+  );
+}
+
+/* ============================================================
+   DESKTOP EVENT PREVIEW
+   ============================================================ */
+
+function DesktopEventPreview({
+  e,
+  onClose,
+}: {
+  e: KEvent;
+  onClose: () => void;
+}) {
+  const m =
+    CATEGORY_META[e.category];
+
+  return (
+    <section
+      aria-label={`Preview: ${e.title}`}
+      className="relative flex max-h-[55dvh] flex-col overflow-y-auto rounded-2xl border border-border bg-card shadow-2xl lg:mx-auto lg:max-w-2xl"
+    >
+      {/* HEADER */}
+
+      <div className="shrink-0 px-5 pb-3 pt-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+            <CategoryBadge e={e} />
+
+            <StatusBadge e={e} />
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close preview"
+            className="-m-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full hover:bg-muted"
+          >
+            <X
+              size={18}
+              aria-hidden="true"
+            />
+          </button>
+        </div>
+
+        <h2 className="mt-3 text-xl font-bold leading-snug">
+          {e.title}
+        </h2>
+      </div>
+
+      {/* CONTENT */}
+
+      <div className="min-h-0 flex-1 px-5 pb-4">
+        <ul className="space-y-2.5 text-sm">
+          <li className="flex gap-2.5">
+            <MapPin
+              size={17}
+              className="mt-0.5 shrink-0"
+              aria-hidden="true"
+            />
+
+            <span>
+              {e.venue},{" "}
+              {e.locality},{" "}
+              {e.district}
+            </span>
+          </li>
+
+          <li className="flex gap-2.5">
+            <CalendarDays
+              size={17}
+              className="mt-0.5 shrink-0"
+              aria-hidden="true"
+            />
+
+            <span>
+              {fmtWhen(e)}
+            </span>
+          </li>
+
+          <li className="flex gap-2.5">
+            <Ticket
+              size={17}
+              className="mt-0.5 shrink-0"
+              aria-hidden="true"
+            />
+
+            <span>
+              {entryLabel(e)}
+            </span>
+          </li>
+        </ul>
+
+        <p className="mt-4 text-sm leading-relaxed text-muted-foreground">
+          {e.description}
+        </p>
+      </div>
+
+      {/* FOOTER */}
+
+      <div className="shrink-0 border-t border-border bg-card px-5 py-4">
+        <div className="flex items-center justify-between gap-3">
+          <span className="flex min-w-0 items-center gap-1.5 text-sm">
+            <ThumbsUp
+              size={14}
+              aria-hidden="true"
+            />
+
+            <span className="truncate">
+              {confirmText(
+                e.upvotes,
+              )}
+            </span>
+          </span>
+
+          <Link
+            to="/event/$id"
+            params={{ id: e.id }}
+            className="flex h-10 shrink-0 items-center justify-center rounded-full bg-primary px-5 text-sm font-semibold text-primary-foreground hover:opacity-90"
+          >
+            View Event
+          </Link>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ============================================================
+   MOBILE / TABLET EVENT PREVIEW
+   ============================================================ */
+
+function MobileEventPreview({
+  e,
+  onClose,
+}: {
+  e: KEvent;
+  onClose: () => void;
+}) {
   const [expanded, setExpanded] =
     useState(false);
 
@@ -329,47 +498,67 @@ export function EventPreview({
   const startExpanded =
     useRef(false);
 
+  const activePointer =
+    useRef<number | null>(null);
+
+  const m =
+    CATEGORY_META[e.category];
+
   /*
-   * Reset when a different event
-   * is selected.
+   * Reset sheet when a different
+   * event is selected.
    */
   useEffect(() => {
     setExpanded(false);
     setDragY(0);
     setDragging(false);
+
     startY.current = null;
+    activePointer.current =
+      null;
   }, [e.id]);
 
   /*
-   * Prevent the page/map from
-   * scrolling while the user is
-   * dragging the sheet.
+   * Lock page scrolling while the
+   * sheet itself is being dragged.
    */
   useEffect(() => {
-    if (!mobile || !dragging) {
+    if (!dragging) {
       return;
     }
 
     const previousOverflow =
       document.body.style.overflow;
 
+    const previousTouchAction =
+      document.body.style.touchAction;
+
     document.body.style.overflow =
       "hidden";
+
+    document.body.style.touchAction =
+      "none";
 
     return () => {
       document.body.style.overflow =
         previousOverflow;
-    };
-  }, [mobile, dragging]);
 
+      document.body.style.touchAction =
+        previousTouchAction;
+    };
+  }, [dragging]);
+
+  /*
+   * Start gesture.
+   *
+   * The gesture area is deliberately
+   * larger than the little handle.
+   * Users can grab the upper part of
+   * the card naturally.
+   */
   const beginDrag = (
     event: React.PointerEvent<HTMLDivElement>,
   ) => {
-    /*
-     * Only use the gesture on
-     * touch/pen. Mouse remains
-     * normal desktop behavior.
-     */
     if (
       event.pointerType === "mouse"
     ) {
@@ -381,6 +570,9 @@ export function EventPreview({
 
     startExpanded.current =
       expanded;
+
+    activePointer.current =
+      event.pointerId;
 
     setDragging(true);
     setDragY(0);
@@ -395,7 +587,9 @@ export function EventPreview({
   ) => {
     if (
       !dragging ||
-      startY.current === null
+      startY.current === null ||
+      activePointer.current !==
+        event.pointerId
     ) {
       return;
     }
@@ -405,17 +599,25 @@ export function EventPreview({
       startY.current;
 
     /*
-     * COLLAPSED:
-     *
-     * Only upward movement.
-     * The old popup moves upward
-     * with the finger until release.
+     * CLOSED → only allow upward
+     * movement.
      */
     if (!startExpanded.current) {
+      const upward =
+        Math.min(delta, 0);
+
+      /*
+       * Add resistance near the
+       * maximum travel distance.
+       */
+      const maxTravel =
+        window.innerHeight *
+        0.78;
+
       setDragY(
         Math.max(
-          -window.innerHeight * 0.75,
-          Math.min(delta, 0),
+          -maxTravel,
+          upward,
         ),
       );
 
@@ -423,22 +625,25 @@ export function EventPreview({
     }
 
     /*
-     * EXPANDED:
-     *
-     * Only downward movement.
+     * OPEN → only allow downward
+     * movement.
      */
+    const downward =
+      Math.max(delta, 0);
+
+    const maxTravel =
+      window.innerHeight *
+      0.78;
+
     setDragY(
-      Math.max(
-        0,
-        Math.min(
-          delta,
-          window.innerHeight * 0.75,
-        ),
+      Math.min(
+        maxTravel,
+        downward,
       ),
     );
   };
 
-  const endDrag = (
+  const finishDrag = (
     event: React.PointerEvent<HTMLDivElement>,
   ) => {
     if (
@@ -452,21 +657,27 @@ export function EventPreview({
       event.clientY -
       startY.current;
 
+    const threshold = 60;
+
     /*
-     * Smaller threshold makes
-     * the gesture feel natural.
+     * Save the state before resetting
+     * the gesture.
      */
-    const threshold = 70;
+    const wasExpanded =
+      startExpanded.current;
 
     setDragging(false);
     setDragY(0);
+
     startY.current = null;
+    activePointer.current =
+      null;
 
     /*
-     * OLD POPUP → FULL SCREEN
+     * CLOSED → EXPAND
      */
     if (
-      !startExpanded.current &&
+      !wasExpanded &&
       delta < -threshold
     ) {
       setExpanded(true);
@@ -474,10 +685,10 @@ export function EventPreview({
     }
 
     /*
-     * FULL SCREEN → OLD POPUP
+     * EXPANDED → COLLAPSE
      */
     if (
-      startExpanded.current &&
+      wasExpanded &&
       delta > threshold
     ) {
       setExpanded(false);
@@ -487,37 +698,23 @@ export function EventPreview({
   const cancelDrag = () => {
     setDragging(false);
     setDragY(0);
+
     startY.current = null;
+    activePointer.current =
+      null;
   };
 
-  const m =
-    CATEGORY_META[e.category];
-
   /*
-   * Mobile behavior:
+   * The collapsed sheet keeps its
+   * natural content height.
    *
-   * CLOSED:
-   *   Uses the original popup sizing.
-   *
-   * OPEN:
-   *   Nearly full viewport.
-   *
-   * We deliberately do NOT force
-   * the old popup to 28vh.
+   * Expanded sheet occupies almost
+   * the entire viewport.
    */
-  const mobileStyle = mobile
-    ? expanded
-      ? {
-          height:
-            "calc(100dvh - 8px)",
-          maxHeight:
-            "calc(100dvh - 8px)",
-        }
-      : {
-          height: "auto",
-          maxHeight: "55dvh",
-        }
-    : undefined;
+  const sheetHeight =
+    expanded
+      ? "calc(100dvh - 8px)"
+      : "auto";
 
   return (
     <>
@@ -525,7 +722,7 @@ export function EventPreview({
           EXPANDED BACKDROP
           ====================================================== */}
 
-      {mobile && expanded && (
+      {expanded && (
         <div
           className="fixed inset-0 z-[999] bg-black/15 backdrop-blur-[1px]"
           aria-hidden="true"
@@ -537,74 +734,89 @@ export function EventPreview({
 
       <section
         aria-label={`Preview: ${e.title}`}
-        data-dragging={dragging}
-        className={`relative flex flex-col overflow-hidden border border-border bg-card shadow-2xl ${
-          mobile
-            ? "fixed inset-x-0 bottom-0 z-[1000] rounded-t-2xl"
-            : "max-h-[55dvh] overflow-y-auto rounded-t-2xl lg:mx-auto lg:max-w-2xl lg:rounded-2xl"
+        className={`fixed inset-x-0 bottom-0 z-[1000] flex flex-col overflow-hidden rounded-t-2xl border border-border bg-card shadow-2xl ${
+          expanded
+            ? "rounded-t-2xl"
+            : ""
         }`}
         style={{
-          ...(mobileStyle ?? {}),
-          transform:
-            mobile && dragging
-              ? `translateY(${dragY}px)`
-              : undefined,
+          height: sheetHeight,
+          maxHeight:
+            "calc(100dvh - 8px)",
+          transform: dragging
+            ? `translate3d(0, ${dragY}px, 0)`
+            : "translate3d(0, 0, 0)",
           transition: dragging
             ? "none"
-            : "height 380ms cubic-bezier(0.22, 1, 0.36, 1), max-height 380ms cubic-bezier(0.22, 1, 0.36, 1), transform 380ms cubic-bezier(0.22, 1, 0.36, 1)",
-          willChange: mobile
-            ? "height, max-height, transform"
-            : undefined,
+            : "height 320ms cubic-bezier(0.22, 1, 0.36, 1), transform 260ms cubic-bezier(0.22, 1, 0.36, 1)",
+          willChange:
+            "height, transform",
         }}
       >
         {/* ====================================================
-            MOBILE DRAG AREA
+            DRAG HANDLE / GESTURE AREA
             ==================================================== */}
 
-        {mobile && (
-          <div
-            className="shrink-0 px-4 pb-1 pt-2"
-            style={{
-              touchAction: "none",
-            }}
-            onPointerDown={
-              beginDrag
+        <div
+          className="relative z-10 shrink-0 px-4 pt-1"
+          style={{
+            touchAction: "none",
+          }}
+          onPointerDown={
+            beginDrag
+          }
+          onPointerMove={
+            moveDrag
+          }
+          onPointerUp={
+            finishDrag
+          }
+          onPointerCancel={
+            cancelDrag
+          }
+        >
+          <button
+            type="button"
+            tabIndex={-1}
+            aria-label={
+              expanded
+                ? "Collapse event details"
+                : "Expand event details"
             }
-            onPointerMove={
-              moveDrag
+            onClick={() =>
+              setExpanded(
+                (value) =>
+                  !value,
+              )
             }
-            onPointerUp={
-              endDrag
-            }
-            onPointerCancel={
-              cancelDrag
-            }
+            className="mx-auto flex h-10 w-full max-w-24 items-center justify-center rounded-full"
           >
-            <button
-              type="button"
-              aria-label={
-                expanded
-                  ? "Collapse event details"
-                  : "Expand event details"
-              }
-              onClick={() =>
-                setExpanded(
-                  (value) =>
-                    !value,
-                )
-              }
-              className="mx-auto flex h-7 w-16 cursor-grab items-center justify-center rounded-full active:cursor-grabbing"
-            >
-              <span className="block h-1.5 w-12 rounded-full bg-muted-foreground/35" />
-            </button>
-          </div>
-        )}
+            <span className="block h-1.5 w-12 rounded-full bg-muted-foreground/35" />
+          </button>
+        </div>
 
         {/* ====================================================
             HEADER
             ==================================================== */}
 
-        <div className="shrink-0 px-4 pb-2">
+        <div
+          className="shrink-0 px-4 pb-3"
+          style={{
+            touchAction: "none",
+          }}
+          onPointerDown={
+            beginDrag
+          }
+          onPointerMove={
+            moveDrag
+          }
+          onPointerUp={
+            finishDrag
+          }
+          onPointerCancel={
+            cancelDrag
+          }
+        >
           <div className="flex items-start justify-between gap-2">
             <div className="flex min-w-0 flex-wrap items-center gap-1.5">
               <CategoryBadge e={e} />
@@ -635,23 +847,19 @@ export function EventPreview({
             ==================================================== */}
 
         <div
-          className={`
-            min-h-0
-            flex-1
-            overflow-y-auto
-            overscroll-contain
-            px-4
-            pb-3
-            ${
-              mobile && expanded
-                ? "touch-pan-y"
-                : ""
-            }
-          `}
+          className={`min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-3 ${
+            expanded
+              ? "touch-pan-y"
+              : "overflow-hidden"
+          }`}
+          style={{
+            WebkitOverflowScrolling:
+              "touch",
+          }}
         >
-          {/* IMAGE ONLY WHEN FULL SCREEN */}
+          {/* IMAGE IN EXPANDED MODE */}
 
-          {mobile && expanded && (
+          {expanded && (
             <div className="mb-4 h-44 overflow-hidden rounded-xl border border-border bg-muted">
               <EventThumbnail
                 e={e}
@@ -660,6 +868,8 @@ export function EventPreview({
               />
             </div>
           )}
+
+          {/* EVENT DETAILS */}
 
           <ul className="space-y-2 text-sm">
             <li className="flex gap-2">
@@ -703,19 +913,17 @@ export function EventPreview({
 
           <p
             className={`mt-3 text-sm leading-relaxed text-muted-foreground ${
-              mobile && !expanded
-                ? "line-clamp-3"
-                : ""
+              expanded
+                ? ""
+                : "line-clamp-3"
             }`}
           >
             {e.description}
           </p>
 
-          {/* ==================================================
-              EXTRA DETAILS ONLY IN EXPANDED MODE
-             ================================================== */}
+          {/* EXTRA DETAILS */}
 
-          {mobile && expanded && (
+          {expanded && (
             <div className="mt-5 space-y-3 pb-2">
               <div className="rounded-xl border border-border bg-muted/40 p-3">
                 <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
