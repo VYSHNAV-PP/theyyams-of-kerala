@@ -153,6 +153,12 @@ function Home() {
     setFilterOpen,
   ] = useState(false);
 
+  /* Mobile category expansion */
+  const [
+    categoriesExpanded,
+    setCategoriesExpanded,
+  ] = useState(false);
+
   const [now, setNow] =
     useState(() =>
       Date.now(),
@@ -483,7 +489,7 @@ function Home() {
     filtered.length === 0;
 
   return (
-    <div className="flex h-dvh min-h-0 flex-col overflow-hidden bg-background">
+    <div className="flex min-h-dvh flex-col bg-background">
       <SiteHeader
         search={{
           value: f.q,
@@ -491,16 +497,27 @@ function Home() {
         }}
       />
 
-      {/* CATEGORIES + QUICK FILTERS */}
+      {/* =========================================================
+          CATEGORIES + QUICK FILTERS
+          ========================================================= */}
       <div className="shrink-0 border-b border-border bg-card">
         <div className="mx-auto flex w-full max-w-[1800px] flex-col items-center px-2 py-2 sm:px-4 sm:py-2.5 md:px-6 lg:px-8 xl:px-10">
 
-          {/* CATEGORIES */}
+          {/* =====================================================
+              CATEGORIES
+              Mobile:
+                All + first 2 categories + ...
+              Expanded:
+                all categories
+              sm+:
+                all categories
+              ===================================================== */}
           <div
             className="flex w-full flex-wrap justify-center gap-1.5 sm:gap-2 md:gap-2.5"
             role="group"
             aria-label="Categories"
           >
+            {/* ALL */}
             <Chip
               active={
                 f.category ===
@@ -520,7 +537,14 @@ function Home() {
               </span>
             </Chip>
 
-            {CATEGORIES.map(
+            {/* =================================================
+                MOBILE COLLAPSED CATEGORIES
+                Only first 2 categories visible below sm
+                ================================================= */}
+            {CATEGORIES.slice(
+              0,
+              2,
+            ).map(
               (c) => (
                 <Chip
                   key={c}
@@ -558,16 +582,109 @@ function Home() {
                 </Chip>
               ),
             )}
+
+            {/* =================================================
+                MORE BUTTON
+                Only visible on small screens
+                ================================================= */}
+            {!categoriesExpanded && (
+              <button
+                type="button"
+                onClick={() =>
+                  setCategoriesExpanded(
+                    true,
+                  )
+                }
+                aria-label="Show all categories"
+                className="flex h-9 shrink-0 items-center justify-center rounded-lg border border-border bg-card px-3 text-base font-bold leading-none text-foreground shadow-sm transition-colors hover:bg-muted sm:hidden"
+              >
+                …
+              </button>
+            )}
+
+            {/* =================================================
+                REMAINING CATEGORIES
+                Hidden on mobile until ... is clicked.
+                Always visible from sm upward.
+                ================================================= */}
+            <div
+              className={`contents ${
+                categoriesExpanded
+                  ? ""
+                  : "hidden sm:contents"
+              }`}
+            >
+              {CATEGORIES.slice(
+                2,
+              ).map(
+                (c) => (
+                  <Chip
+                    key={c}
+                    active={
+                      f.category ===
+                      c
+                    }
+                    onClick={() =>
+                      setF((x) => ({
+                        ...x,
+                        category:
+                          x.category ===
+                          c
+                            ? "All"
+                            : c,
+                        subcategory:
+                          null,
+                      }))
+                    }
+                  >
+                    <span
+                      className="text-base md:text-lg"
+                      aria-hidden="true"
+                    >
+                      {
+                        CATEGORY_META[
+                          c
+                        ].icon
+                      }
+                    </span>
+
+                    <span className="md:text-sm">
+                      {c}
+                    </span>
+                  </Chip>
+                ),
+              )}
+
+              {/* =================================================
+                  COLLAPSE BUTTON
+                  Only visible after expansion on mobile
+                  ================================================= */}
+              {categoriesExpanded && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    setCategoriesExpanded(
+                      false,
+                    )
+                  }
+                  aria-label="Collapse categories"
+                  className="flex h-9 shrink-0 items-center justify-center rounded-lg border border-border bg-card px-3 text-base font-bold leading-none text-foreground shadow-sm transition-colors hover:bg-muted sm:hidden"
+                >
+                  …
+                </button>
+              )}
+            </div>
           </div>
 
-          {/* QUICK FILTERS */}
+          {/* =====================================================
+              QUICK FILTERS
+              ===================================================== */}
           <div
             className="mt-2 w-full rounded-xl border border-[#e2e8f0] bg-[#f1f5f9] p-1.5 sm:mt-2.5 md:mt-3 md:p-2"
             role="group"
             aria-label="Quick filters"
           >
             <div className="flex flex-wrap items-center justify-center gap-1.5 md:gap-2">
-
               <div className="flex h-9 shrink-0 items-center gap-1.5 px-2 text-[10px] font-bold uppercase tracking-wider text-[#64748b] md:h-10 md:px-3 md:text-xs">
                 <CalendarDays
                   size={14}
@@ -697,10 +814,13 @@ function Home() {
         </div>
       </div>
 
-      {/* MAIN WORKSPACE */}
-      <main className="relative min-h-0 flex-1 overflow-hidden">
-
-        {/* MOBILE / TABLET CONTROLS */}
+      {/* =========================================================
+          MAIN WORKSPACE
+          ========================================================= */}
+      <main className="relative flex-1">
+        {/* =======================================================
+            MOBILE / TABLET CONTROLS
+            ======================================================= */}
         <div className="shrink-0 border-b border-border bg-card px-2 py-2 lg:hidden">
           <div className="flex items-center justify-center gap-2">
             <button
@@ -777,12 +897,21 @@ function Home() {
           </div>
         </div>
 
-        <div className="mx-auto h-full w-full max-w-[1800px] px-1.5 py-1.5 sm:px-2 sm:py-2 md:px-3 lg:px-4">
-          <div className="relative flex h-full min-h-0 gap-2 sm:gap-3 lg:gap-4">
+        {/* =======================================================
+            WORKSPACE
+            Mobile:
+              natural page height + 62vh map
+            Desktop:
+              fixed viewport workspace
+            ======================================================= */}
+        <div className="mx-auto w-full max-w-[1800px] px-1.5 py-1.5 sm:px-2 sm:py-2 md:px-3 lg:px-4">
+          <div className="relative flex min-h-0 gap-2 sm:gap-3 lg:h-[calc(100dvh-260px)] lg:min-h-[520px] lg:gap-4">
 
-            {/* MAP PANEL */}
+            {/* ===================================================
+                MAP PANEL
+                =================================================== */}
             <div
-              className={`relative min-h-0 min-w-0 flex-1 overflow-hidden rounded-xl border border-border bg-muted shadow-sm sm:rounded-2xl ${
+              className={`relative min-h-[62vh] min-w-0 flex-1 overflow-hidden rounded-xl border border-border bg-muted shadow-sm sm:min-h-[620px] sm:rounded-2xl lg:min-h-0 ${
                 view === "map"
                   ? ""
                   : "hidden lg:block"
@@ -923,7 +1052,9 @@ function Home() {
                 )}
             </div>
 
-            {/* DESKTOP EVENT PANEL */}
+            {/* ===================================================
+                DESKTOP EVENT PANEL
+                =================================================== */}
             <aside
               aria-label="Event list"
               className={`flex min-h-0 w-full shrink-0 flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm sm:rounded-2xl lg:w-[360px] xl:w-[400px] 2xl:w-[420px] ${
@@ -1081,9 +1212,11 @@ function Home() {
               </div>
             </aside>
 
-            {/* MOBILE / TABLET LIST VIEW */}
+            {/* ===================================================
+                MOBILE / TABLET LIST VIEW
+                =================================================== */}
             {view === "list" && (
-              <div className="min-w-0 flex-1 overflow-y-auto rounded-xl border border-border bg-card shadow-sm sm:rounded-2xl lg:hidden">
+              <div className="min-h-[62vh] min-w-0 flex-1 overflow-y-auto rounded-xl border border-border bg-card shadow-sm sm:min-h-[620px] sm:rounded-2xl lg:hidden">
                 <div className="border-b border-border px-2.5 py-2 sm:px-3">
                   <div className="flex items-center justify-between gap-2">
                     <p
