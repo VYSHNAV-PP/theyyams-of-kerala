@@ -19,6 +19,7 @@ import {
   Plus,
   SlidersHorizontal,
 } from "lucide-react";
+
 import { SiteHeader } from "@/components/SiteHeader";
 import {
   Chip,
@@ -113,6 +114,40 @@ function useDebounced<T>(
   return d;
 }
 
+function useIsDesktop() {
+  const [
+    isDesktop,
+    setIsDesktop,
+  ] = useState(false);
+
+  useEffect(() => {
+    const media =
+      window.matchMedia(
+        "(min-width: 1024px)",
+      );
+
+    const update = () =>
+      setIsDesktop(
+        media.matches,
+      );
+
+    update();
+
+    media.addEventListener(
+      "change",
+      update,
+    );
+
+    return () =>
+      media.removeEventListener(
+        "change",
+        update,
+      );
+  }, []);
+
+  return isDesktop;
+}
+
 function Home() {
   const [f, setF] =
     useState<Filters>(
@@ -163,6 +198,24 @@ function Home() {
     useState(() =>
       Date.now(),
     );
+
+  /*
+   * IMPORTANT:
+   *
+   * EventMap must not be mounted while the mobile
+   * list is displayed. Leaflet can be initialized
+   * inside a display:none container and then fail
+   * when that container becomes visible.
+   *
+   * Desktop keeps the map mounted even when the
+   * desktop list view is selected.
+   */
+  const isDesktop =
+    useIsDesktop();
+
+  const showMap =
+    isDesktop ||
+    view === "map";
 
   useEffect(() => {
     const t = setInterval(
@@ -368,14 +421,29 @@ function Home() {
   const pickFromList = (
     e: KEvent,
   ) => {
+    /*
+     * Set the event selection first.
+     */
     setSelectedId(e.id);
 
+    /*
+     * Tell the map where the event is.
+     * EventMap will consume this after it mounts.
+     */
     setFocus({
       id: e.id,
       lat: e.lat,
       lng: e.lng,
     });
 
+    /*
+     * On mobile/tablet, switch to map view.
+     *
+     * Because EventMap is conditionally mounted
+     * using showMap, it will now mount into a
+     * visible container rather than a display:none
+     * container.
+     */
     if (view === "list") {
       setView("map");
     }
@@ -489,7 +557,7 @@ function Home() {
     filtered.length === 0;
 
   return (
-    <div className="flex min-h-dvh flex-col bg-background">
+    <div className="flex min-h-dvh flex-col overflow-x-hidden bg-background [touch-action:pan-y]">
       <SiteHeader
         search={{
           value: f.q,
@@ -503,15 +571,6 @@ function Home() {
       <div className="shrink-0 border-b border-border bg-card">
         <div className="mx-auto flex w-full max-w-[1800px] flex-col items-center px-2 py-2 sm:px-4 sm:py-2.5 md:px-6 lg:px-8 xl:px-10">
 
-          {/* =====================================================
-              CATEGORIES
-              Mobile:
-                All + first 2 categories + ...
-              Expanded:
-                all categories
-              sm+:
-                all categories
-              ===================================================== */}
           <div
             className="flex w-full flex-wrap justify-center gap-1.5 sm:gap-2 md:gap-2.5"
             role="group"
@@ -537,10 +596,7 @@ function Home() {
               </span>
             </Chip>
 
-            {/* =================================================
-                MOBILE COLLAPSED CATEGORIES
-                Only first 2 categories visible below sm
-                ================================================= */}
+            {/* MOBILE COLLAPSED CATEGORIES */}
             {CATEGORIES.slice(
               0,
               2,
@@ -583,10 +639,7 @@ function Home() {
               ),
             )}
 
-            {/* =================================================
-                MORE BUTTON
-                Only visible on small screens
-                ================================================= */}
+            {/* MORE BUTTON */}
             {!categoriesExpanded && (
               <button
                 type="button"
@@ -602,11 +655,7 @@ function Home() {
               </button>
             )}
 
-            {/* =================================================
-                REMAINING CATEGORIES
-                Hidden on mobile until ... is clicked.
-                Always visible from sm upward.
-                ================================================= */}
+            {/* REMAINING CATEGORIES */}
             <div
               className={`contents ${
                 categoriesExpanded
@@ -655,10 +704,7 @@ function Home() {
                 ),
               )}
 
-              {/* =================================================
-                  COLLAPSE BUTTON
-                  Only visible after expansion on mobile
-                  ================================================= */}
+              {/* COLLAPSE BUTTON */}
               {categoriesExpanded && (
                 <button
                   type="button"
@@ -676,9 +722,7 @@ function Home() {
             </div>
           </div>
 
-          {/* =====================================================
-              QUICK FILTERS
-              ===================================================== */}
+          {/* QUICK FILTERS */}
           <div
             className="mt-2 w-full rounded-xl border border-[#e2e8f0] bg-[#f1f5f9] p-1.5 sm:mt-2.5 md:mt-3 md:p-2"
             role="group"
@@ -817,10 +861,9 @@ function Home() {
       {/* =========================================================
           MAIN WORKSPACE
           ========================================================= */}
-      <main className="relative flex-1">
-        {/* =======================================================
-            MOBILE / TABLET CONTROLS
-            ======================================================= */}
+      <main className="relative flex-1 [touch-action:pan-y]">
+
+        {/* MOBILE / TABLET CONTROLS */}
         <div className="shrink-0 border-b border-border bg-card px-2 py-2 lg:hidden">
           <div className="flex items-center justify-center gap-2">
             <button
@@ -897,160 +940,162 @@ function Home() {
           </div>
         </div>
 
-        {/* =======================================================
-            WORKSPACE
-            Mobile:
-              natural page height + 62vh map
-            Desktop:
-              fixed viewport workspace
-            ======================================================= */}
+        {/* SMALL DESCRIPTION */}
+        <div className="mx-auto w-full max-w-[1800px] px-2 pt-2 sm:px-3 sm:pt-3 lg:px-4">
+          <p className="text-center text-xs text-muted-foreground sm:text-sm">
+            Explore events across Kerala — browse
+            the map, filter by category or date, and
+            tap an event for details.
+          </p>
+        </div>
+
+        {/* WORKSPACE */}
         <div className="mx-auto w-full max-w-[1800px] px-1.5 py-1.5 sm:px-2 sm:py-2 md:px-3 lg:px-4">
           <div className="relative flex min-h-0 gap-2 sm:gap-3 lg:h-[calc(100dvh-260px)] lg:min-h-[520px] lg:gap-4">
 
             {/* ===================================================
                 MAP PANEL
                 =================================================== */}
-            <div
-              className={`relative min-h-[62vh] min-w-0 flex-1 overflow-hidden rounded-xl border border-border bg-muted shadow-sm sm:min-h-[620px] sm:rounded-2xl lg:min-h-0 ${
-                view === "map"
-                  ? ""
-                  : "hidden lg:block"
-              }`}
-            >
-              <ClientOnly
-                fallback={
-                  <div className="flex h-full items-center justify-center bg-muted text-sm text-muted-foreground">
-                    Loading map…
-                  </div>
-                }
+            {showMap && (
+              <div
+                className="relative min-h-[62vh] min-w-0 flex-1 overflow-hidden rounded-xl border border-border bg-muted shadow-sm [touch-action:auto] sm:min-h-[620px] sm:rounded-2xl lg:min-h-0"
               >
-                <Suspense
+                <ClientOnly
                   fallback={
                     <div className="flex h-full items-center justify-center bg-muted text-sm text-muted-foreground">
                       Loading map…
                     </div>
                   }
                 >
-                  <EventMap
-                    events={
-                      filtered
+                  <Suspense
+                    fallback={
+                      <div className="flex h-full items-center justify-center bg-muted text-sm text-muted-foreground">
+                        Loading map…
+                      </div>
                     }
-                    selectedId={
-                      selectedId
-                    }
-                    focus={focus}
-                    fit={fit}
-                    onSelect={
-                      onSelect
-                    }
-                    onViewport={
-                      setVp
-                    }
-                    onLocate={(
-                      lat,
-                      lng,
-                    ) =>
-                      setUser([
+                  >
+                    <EventMap
+                      key="event-map"
+                      events={
+                        filtered
+                      }
+                      selectedId={
+                        selectedId
+                      }
+                      focus={focus}
+                      fit={fit}
+                      onSelect={
+                        onSelect
+                      }
+                      onViewport={
+                        setVp
+                      }
+                      onLocate={(
                         lat,
                         lng,
-                      ])
-                    }
-                  />
-                </Suspense>
-              </ClientOnly>
-
-              {q.isFetching &&
-                !all && (
-                  <p
-                    role="status"
-                    className="absolute left-1/2 top-3 z-[500] -translate-x-1/2 rounded-full bg-card px-3 py-1 text-xs shadow"
-                  >
-                    Loading events…
-                  </p>
-                )}
-
-              {q.isError && (
-                <div
-                  role="alert"
-                  className="absolute left-1/2 top-16 z-[500] w-[90%] max-w-sm -translate-x-1/2 rounded-lg border border-border bg-card p-4 text-center shadow-lg"
-                >
-                  <p className="text-sm font-semibold">
-                    We couldn't
-                    load events
-                  </p>
-
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Check your
-                    connection and
-                    try again.
-                  </p>
-
-                  <button
-                    type="button"
-                    onClick={() =>
-                      void q.refetch()
-                    }
-                    className="mt-3 h-9 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground"
-                  >
-                    Retry
-                  </button>
-                </div>
-              )}
-
-              {empty &&
-                !selected && (
-                  <div className="absolute inset-x-2 bottom-3 z-[500] mx-auto max-w-sm rounded-lg border border-border bg-card p-4 text-center shadow-lg sm:inset-x-3 sm:bottom-4">
-                    <p className="text-sm font-semibold">
-                      {all?.length
-                        ? "No events match these filters"
-                        : "No events on the map yet"}
-                    </p>
-
-                    <div className="mt-3 flex flex-wrap justify-center gap-2">
-                      {filtersOn && (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setF(
-                              DEFAULT_FILTERS,
-                            )
-                          }
-                          className="h-9 rounded-md border border-border px-3 text-sm font-medium hover:bg-muted"
-                        >
-                          Clear
-                          filters
-                        </button>
-                      )}
-
-                      <Link
-                        to="/submit"
-                        className="flex h-9 items-center gap-1 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground"
-                      >
-                        <Plus
-                          size={14}
-                          aria-hidden="true"
-                        />
-                        Post an
-                        Event
-                      </Link>
-                    </div>
-                  </div>
-                )}
-
-              {selected &&
-                view === "map" && (
-                  <div className="absolute inset-x-0 bottom-0 z-[600] sm:inset-x-2 sm:bottom-2 md:inset-x-3 md:bottom-3 lg:inset-x-auto lg:left-3 lg:w-96">
-                    <EventPreview
-                      e={selected}
-                      onClose={() =>
-                        setSelectedId(
-                          null,
-                        )
+                      ) =>
+                        setUser([
+                          lat,
+                          lng,
+                        ])
                       }
                     />
+                  </Suspense>
+                </ClientOnly>
+
+                {q.isFetching &&
+                  !all && (
+                    <p
+                      role="status"
+                      className="absolute left-1/2 top-3 z-[500] -translate-x-1/2 rounded-full bg-card px-3 py-1 text-xs shadow"
+                    >
+                      Loading events…
+                    </p>
+                  )}
+
+                {q.isError && (
+                  <div
+                    role="alert"
+                    className="absolute left-1/2 top-16 z-[500] w-[90%] max-w-sm -translate-x-1/2 rounded-lg border border-border bg-card p-4 text-center shadow-lg"
+                  >
+                    <p className="text-sm font-semibold">
+                      We couldn't
+                      load events
+                    </p>
+
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Check your
+                      connection and
+                      try again.
+                    </p>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void q.refetch()
+                      }
+                      className="mt-3 h-9 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground"
+                    >
+                      Retry
+                    </button>
                   </div>
                 )}
-            </div>
+
+                {empty &&
+                  !selected && (
+                    <div className="absolute inset-x-2 bottom-3 z-[500] mx-auto max-w-sm rounded-lg border border-border bg-card p-4 text-center shadow-lg sm:inset-x-3 sm:bottom-4">
+                      <p className="text-sm font-semibold">
+                        {all?.length
+                          ? "No events match these filters"
+                          : "No events on the map yet"}
+                      </p>
+
+                      <div className="mt-3 flex flex-wrap justify-center gap-2">
+                        {filtersOn && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setF(
+                                DEFAULT_FILTERS,
+                              )
+                            }
+                            className="h-9 rounded-md border border-border px-3 text-sm font-medium hover:bg-muted"
+                          >
+                            Clear
+                            filters
+                          </button>
+                        )}
+
+                        <Link
+                          to="/submit"
+                          className="flex h-9 items-center gap-1 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground"
+                        >
+                          <Plus
+                            size={14}
+                            aria-hidden="true"
+                          />
+                          Post an
+                          Event
+                        </Link>
+                      </div>
+                    </div>
+                  )}
+
+                {selected &&
+                  view === "map" && (
+                    <div className="absolute inset-x-0 bottom-0 z-[600] sm:inset-x-2 sm:bottom-2 md:inset-x-3 md:bottom-3 lg:inset-x-auto lg:left-3 lg:w-96">
+                      <EventPreview
+                        e={selected}
+                        onClose={() =>
+                          setSelectedId(
+                            null,
+                          )
+                        }
+                      />
+                    </div>
+                  )}
+              </div>
+            )}
 
             {/* ===================================================
                 DESKTOP EVENT PANEL
