@@ -78,22 +78,36 @@ export function SiteHeader({
 
   return (
     <header className="relative z-[1000] shrink-0 border-b border-slate-200 bg-white">
-      <div className="mx-auto w-full max-w-[1800px] px-2.5 sm:px-4 md:px-5 lg:px-8 xl:px-10">
-        {/* =====================================================
-            MAIN HEADER
-           ===================================================== */}
-        <div className="flex h-[60px] items-center gap-2 sm:h-[68px] sm:gap-3 lg:h-[76px] lg:gap-5">
-
-          {/* ===================================================
+      <div className="mx-auto w-full max-w-[1800px] px-3 sm:px-4 md:px-5 lg:px-8 xl:px-10">
+        <div
+          className={`
+            relative
+            flex
+            h-[60px]
+            items-center
+            sm:h-[68px]
+            lg:h-[76px]
+            ${search ? "gap-2 sm:gap-3 lg:gap-5" : ""}
+          `}
+        >
+          {/* =====================================================
               LOGO
-             =================================================== */}
+             ===================================================== */}
           <Link
             to="/"
             aria-label="Kerala Events — home"
             onClick={() =>
               setMenuOpen(false)
             }
-            className="flex shrink-0 items-center gap-2 sm:gap-2.5 lg:gap-3"
+            className={`
+              flex
+              shrink-0
+              items-center
+              gap-2
+              sm:gap-2.5
+              lg:gap-3
+              ${!search ? "mx-auto md:mx-0" : ""}
+            `}
           >
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#edf7f3] text-[#075c48] sm:h-10 sm:w-10 lg:h-11 lg:w-11">
               <MapPin
@@ -103,14 +117,14 @@ export function SiteHeader({
               />
             </span>
 
-            <span className="hidden font-display text-[25px] font-bold tracking-[-0.5px] text-[#075c48] sm:inline lg:text-[25px]">
+            <span className="font-display text-[20px] font-bold tracking-[-0.5px] text-[#075c48] sm:text-[23px] lg:text-[25px]">
               Kerala Events
             </span>
           </Link>
 
-          {/* ===================================================
+          {/* =====================================================
               MOBILE SEARCH
-             =================================================== */}
+             ===================================================== */}
           {search && (
             <div className="relative min-w-0 flex-1 md:hidden">
               <Search
@@ -182,9 +196,9 @@ export function SiteHeader({
             </div>
           )}
 
-          {/* ===================================================
+          {/* =====================================================
               DESKTOP SEARCH
-             =================================================== */}
+             ===================================================== */}
           {search && (
             <div className="relative hidden min-w-0 flex-1 md:block md:max-w-[870px] lg:mx-5 xl:mx-8">
               <Search
@@ -253,331 +267,336 @@ export function SiteHeader({
             </div>
           )}
 
-          {/* ===================================================
-              MOBILE SPACER
-             =================================================== */}
-          {!search && (
-            <div className="min-w-0 flex-1 md:hidden" />
-          )}
-
-          {/* ===================================================
-              DESKTOP EXPLORE
-             =================================================== */}
-          <Link
-            to="/"
-            onClick={() =>
-              setMenuOpen(false)
-            }
-            className="
-              hidden
+          {/* =====================================================
+              DESKTOP RIGHT SIDE
+             ===================================================== */}
+          <div
+            className={`
+              flex
               shrink-0
               items-center
               gap-2
-              rounded-full
-              px-4
-              py-3
-              text-[16px]
-              font-semibold
-              text-[#064d3e]
-              hover:bg-slate-50
-              lg:flex
-            "
+              sm:gap-3
+              lg:gap-4
+              ${search ? "ml-auto" : "absolute right-0 md:static md:ml-auto"}
+            `}
           >
-            <Compass size={22} />
-            Explore
-          </Link>
-
-          {/* ===================================================
-              POST EVENT
-             =================================================== */}
-          <Link
-            to="/submit"
-            onClick={() =>
-              setMenuOpen(false)
-            }
-            className="
-              flex
-              h-9
-              shrink-0
-              items-center
-              justify-center
-              gap-1
-              rounded-full
-              bg-[#075c48]
-              px-3
-              text-[12px]
-              font-semibold
-              text-white
-              shadow-sm
-              transition
-              hover:bg-[#064d3e]
-              focus-visible:outline-2
-              focus-visible:outline-offset-2
-              focus-visible:outline-[#075c48]
-              sm:h-10
-              sm:gap-1.5
-              sm:px-3.5
-              sm:text-[13px]
-              lg:h-[50px]
-              lg:gap-2
-              lg:px-5
-              lg:text-[15px]
-            "
-          >
-            <Plus
-              size={17}
-              className="sm:h-[19px] sm:w-[19px] lg:h-5 lg:w-5"
-            />
-
-            <span className="hidden sm:inline lg:hidden">
-              Post
-            </span>
-
-            <span className="hidden lg:inline">
-              Post an Event
-            </span>
-          </Link>
-
-          {/* ===================================================
-              MENU BUTTON
-             =================================================== */}
-          <div
-            ref={menuRef}
-            className="relative shrink-0"
-          >
-            <button
-              type="button"
-              aria-label={
-                menuOpen
-                  ? "Close menu"
-                  : "Open menu"
-              }
-              aria-expanded={menuOpen}
-              aria-haspopup="menu"
+            {/* ===================================================
+                DESKTOP EXPLORE
+               =================================================== */}
+            <Link
+              to="/"
               onClick={() =>
-                setMenuOpen(
-                  (open) => !open,
-                )
+                setMenuOpen(false)
               }
               className="
-                relative
-                z-[1100]
-                flex
+                hidden
+                shrink-0
+                items-center
+                gap-2
+                rounded-full
+                px-4
+                py-3
+                text-[16px]
+                font-semibold
+                text-[#064d3e]
+                hover:bg-slate-50
+                lg:flex
+              "
+            >
+              <Compass size={22} />
+              Explore
+            </Link>
+
+            {/* ===================================================
+                POST EVENT
+               =================================================== */}
+            <Link
+              to="/submit"
+              onClick={() =>
+                setMenuOpen(false)
+              }
+              className="
+                hidden
                 h-9
-                w-9
+                shrink-0
                 items-center
                 justify-center
+                gap-1
                 rounded-full
-                text-slate-800
+                bg-[#075c48]
+                px-3
+                text-[12px]
+                font-semibold
+                text-white
+                shadow-sm
                 transition
-                hover:bg-slate-100
-                active:bg-slate-200
+                hover:bg-[#064d3e]
                 focus-visible:outline-2
                 focus-visible:outline-offset-2
                 focus-visible:outline-[#075c48]
                 sm:h-10
-                sm:w-10
-                lg:h-11
-                lg:w-11
+                sm:gap-1.5
+                sm:px-3.5
+                sm:text-[13px]
+                lg:flex
+                lg:h-[50px]
+                lg:gap-2
+                lg:px-5
+                lg:text-[15px]
               "
             >
-              {menuOpen ? (
-                <X
-                  size={22}
-                  strokeWidth={2}
-                />
-              ) : (
-                <Menu
-                  size={24}
-                  strokeWidth={2}
-                />
-              )}
-            </button>
+              <Plus
+                size={17}
+                className="sm:h-[19px] sm:w-[19px] lg:h-5 lg:w-5"
+              />
 
-            {/* =================================================
-                MOBILE DROPDOWN
-               ================================================= */}
-            {menuOpen && (
-              <>
-                {/* Mobile backdrop */}
-                <div
-                  className="
-                    fixed
-                    inset-0
-                    z-[1050]
-                    bg-black/5
-                    md:hidden
-                  "
-                  aria-hidden="true"
-                  onClick={() =>
-                    setMenuOpen(false)
-                  }
-                />
+              <span className="hidden sm:inline lg:hidden">
+                Post
+              </span>
 
-                {/* Mobile menu */}
-                <div
-                  role="menu"
-                  className="
-                    fixed
-                    right-2
-                    top-[64px]
-                    z-[1100]
-                    w-[calc(100vw-16px)]
-                    max-w-[280px]
-                    overflow-hidden
-                    rounded-xl
-                    border
-                    border-slate-200
-                    bg-white
-                    p-1.5
-                    shadow-xl
-                    sm:right-3
-                    sm:top-[72px]
-                    sm:max-w-[300px]
-                    md:hidden
-                  "
-                >
-                  {/* Explore */}
-                  <Link
-                    to="/"
-                    role="menuitem"
+              <span className="hidden lg:inline">
+                Post an Event
+              </span>
+            </Link>
+
+            {/* ===================================================
+                MENU
+               =================================================== */}
+            <div
+              ref={menuRef}
+              className="relative shrink-0"
+            >
+              <button
+                type="button"
+                aria-label={
+                  menuOpen
+                    ? "Close menu"
+                    : "Open menu"
+                }
+                aria-expanded={menuOpen}
+                aria-haspopup="menu"
+                onClick={() =>
+                  setMenuOpen(
+                    (open) => !open,
+                  )
+                }
+                className="
+                  relative
+                  z-[1100]
+                  flex
+                  h-9
+                  w-9
+                  items-center
+                  justify-center
+                  rounded-full
+                  text-slate-800
+                  transition
+                  hover:bg-slate-100
+                  active:bg-slate-200
+                  focus-visible:outline-2
+                  focus-visible:outline-offset-2
+                  focus-visible:outline-[#075c48]
+                  sm:h-10
+                  sm:w-10
+                  lg:h-11
+                  lg:w-11
+                "
+              >
+                {menuOpen ? (
+                  <X
+                    size={22}
+                    strokeWidth={2}
+                  />
+                ) : (
+                  <Menu
+                    size={24}
+                    strokeWidth={2}
+                  />
+                )}
+              </button>
+
+              {/* =================================================
+                  MOBILE DROPDOWN
+                 ================================================= */}
+              {menuOpen && (
+                <>
+                  <div
+                    className="
+                      fixed
+                      inset-0
+                      z-[1050]
+                      bg-black/5
+                      md:hidden
+                    "
+                    aria-hidden="true"
                     onClick={() =>
                       setMenuOpen(false)
                     }
+                  />
+
+                  <div
+                    role="menu"
                     className="
-                      flex
-                      items-center
-                      gap-3
-                      rounded-lg
-                      px-3
-                      py-3.5
-                      text-sm
-                      font-medium
-                      text-slate-700
-                      transition
-                      hover:bg-slate-100
-                      active:bg-slate-200
+                      fixed
+                      right-2
+                      top-[64px]
+                      z-[1100]
+                      w-[calc(100vw-16px)]
+                      max-w-[280px]
+                      overflow-hidden
+                      rounded-xl
+                      border
+                      border-slate-200
+                      bg-white
+                      p-1.5
+                      shadow-xl
+                      sm:right-3
+                      sm:top-[72px]
+                      sm:max-w-[300px]
+                      md:hidden
                     "
                   >
-                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#edf7f3] text-[#075c48]">
+                    <Link
+                      to="/"
+                      role="menuitem"
+                      onClick={() =>
+                        setMenuOpen(false)
+                      }
+                      className="
+                        flex
+                        items-center
+                        gap-3
+                        rounded-lg
+                        px-3
+                        py-3.5
+                        text-sm
+                        font-medium
+                        text-slate-700
+                        transition
+                        hover:bg-slate-100
+                        active:bg-slate-200
+                      "
+                    >
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#edf7f3] text-[#075c48]">
+                        <Compass
+                          size={19}
+                        />
+                      </span>
+
+                      <span>
+                        Explore events
+                      </span>
+                    </Link>
+
+                    <div
+                      role="menuitem"
+                      aria-disabled="true"
+                      className="
+                        flex
+                        cursor-default
+                        items-center
+                        gap-3
+                        rounded-lg
+                        px-3
+                        py-3.5
+                        text-sm
+                        font-medium
+                        text-slate-400
+                      "
+                    >
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-50">
+                        <Plus
+                          size={19}
+                          className="text-slate-400"
+                        />
+                      </span>
+
+                      <span>
+                        Buy me a coffee
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* =================================================
+                      DESKTOP DROPDOWN
+                     ================================================= */}
+                  <div
+                    role="menu"
+                    className="
+                      absolute
+                      right-0
+                      top-[44px]
+                      z-[1100]
+                      hidden
+                      w-56
+                      overflow-hidden
+                      rounded-xl
+                      border
+                      border-slate-200
+                      bg-white
+                      p-1.5
+                      shadow-xl
+                      sm:top-[50px]
+                      md:block
+                      lg:top-[58px]
+                    "
+                  >
+                    <Link
+                      to="/"
+                      role="menuitem"
+                      onClick={() =>
+                        setMenuOpen(false)
+                      }
+                      className="
+                        flex
+                        items-center
+                        gap-3
+                        rounded-lg
+                        px-3
+                        py-3
+                        text-sm
+                        font-medium
+                        text-slate-700
+                        transition
+                        hover:bg-slate-100
+                      "
+                    >
                       <Compass
                         size={19}
+                        className="text-[#075c48]"
                       />
-                    </span>
 
-                    <span>
                       Explore events
-                    </span>
-                  </Link>
+                    </Link>
 
-                  {/* Buy me a coffee */}
-                  <div
-                    role="menuitem"
-                    aria-disabled="true"
-                    className="
-                      flex
-                      cursor-default
-                      items-center
-                      gap-3
-                      rounded-lg
-                      px-3
-                      py-3.5
-                      text-sm
-                      font-medium
-                      text-slate-400
-                    "
-                  >
-                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-50">
+                    <div
+                      role="menuitem"
+                      aria-disabled="true"
+                      className="
+                        flex
+                        cursor-default
+                        items-center
+                        gap-3
+                        rounded-lg
+                        px-3
+                        py-3
+                        text-sm
+                        font-medium
+                        text-slate-400
+                      "
+                    >
                       <Plus
                         size={19}
                         className="text-slate-400"
                       />
-                    </span>
 
-                    <span>
                       Buy me a coffee
-                    </span>
+                    </div>
                   </div>
-                </div>
-
-                {/* Desktop dropdown */}
-                <div
-                  role="menu"
-                  className="
-                    absolute
-                    right-0
-                    top-[44px]
-                    z-[1100]
-                    hidden
-                    w-56
-                    overflow-hidden
-                    rounded-xl
-                    border
-                    border-slate-200
-                    bg-white
-                    p-1.5
-                    shadow-xl
-                    sm:top-[50px]
-                    md:block
-                    lg:top-[58px]
-                  "
-                >
-                  {/* Explore */}
-                  <Link
-                    to="/"
-                    role="menuitem"
-                    onClick={() =>
-                      setMenuOpen(false)
-                    }
-                    className="
-                      flex
-                      items-center
-                      gap-3
-                      rounded-lg
-                      px-3
-                      py-3
-                      text-sm
-                      font-medium
-                      text-slate-700
-                      transition
-                      hover:bg-slate-100
-                    "
-                  >
-                    <Compass
-                      size={19}
-                      className="text-[#075c48]"
-                    />
-
-                    Explore events
-                  </Link>
-
-                  {/* Buy me a coffee */}
-                  <div
-                    role="menuitem"
-                    aria-disabled="true"
-                    className="
-                      flex
-                      cursor-default
-                      items-center
-                      gap-3
-                      rounded-lg
-                      px-3
-                      py-3
-                      text-sm
-                      font-medium
-                      text-slate-400
-                    "
-                  >
-                    <Plus
-                      size={19}
-                      className="text-slate-400"
-                    />
-
-                    Buy me a coffee
-                  </div>
-                </div>
-              </>
-            )}
+                </>
+              )}
+            </div>
           </div>
         </div>
       </div>
