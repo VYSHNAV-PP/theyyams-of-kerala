@@ -165,16 +165,30 @@
   html {
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
-    overscroll-behavior-y: contain;
+
+    /*
+     * Prevent the document itself from chaining a vertical
+     * overscroll gesture into the browser's pull-to-refresh.
+     */
+    overscroll-behavior-y: none;
   }
 
   body {
+    min-height: 100%;
+    margin: 0;
+
     background-color: var(--color-background);
     color: var(--color-foreground);
-    overscroll-behavior-y: contain;
+
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
+
+    /*
+     * Keep the page from propagating an overscroll gesture
+     * to the browser.
+     */
+    overscroll-behavior-y: none;
   }
 
   a,
@@ -195,8 +209,12 @@
 .scroll-x {
   overflow-x: auto;
   overflow-y: hidden;
+
   overscroll-behavior-x: contain;
+  overscroll-behavior-y: contain;
+
   -webkit-overflow-scrolling: touch;
+
   scroll-snap-type: x proximity;
   scrollbar-width: none;
 
@@ -227,11 +245,24 @@
 
 .scroll-y {
   overflow-y: auto;
-  overscroll-behavior-y: contain;
   -webkit-overflow-scrolling: touch;
+
+  /*
+   * Prevent this scroll container from passing an
+   * overscroll gesture to the document/browser.
+   */
+  overscroll-behavior-y: contain;
+
   scrollbar-width: thin;
-  scrollbar-color: var(--border)
-    transparent;
+  scrollbar-color: var(--border) transparent;
+}
+
+/*
+ * The homepage itself is a normal document on mobile.
+ * Prevent vertical overscroll from escaping the page.
+ */
+.ke-home {
+  overscroll-behavior-y: none;
 }
 
 /* Tap feedback */
@@ -254,10 +285,8 @@
     transparent
   );
 
-  -webkit-backdrop-filter: blur(12px)
-    saturate(1.2);
-  backdrop-filter: blur(12px)
-    saturate(1.2);
+  -webkit-backdrop-filter: blur(12px) saturate(1.2);
+  backdrop-filter: blur(12px) saturate(1.2);
 }
 
 /* Header */
@@ -349,33 +378,19 @@
 /* Quick filters intentionally differ from categories */
 
 .quick-filter-row {
-  border-top: 1px solid
-    oklch(0.92 0.012 160);
+  border-top: 1px solid oklch(0.92 0.012 160);
   padding-top: 0.7rem;
 }
 
 .quick-filter-row button {
-  border-color: oklch(
-    0.84 0.04 155
-  );
-
-  background: oklch(
-    0.955 0.025 155
-  );
-
-  color: oklch(
-    0.36 0.07 172
-  );
+  border-color: oklch(0.84 0.04 155);
+  background: oklch(0.955 0.025 155);
+  color: oklch(0.36 0.07 172);
 }
 
 .quick-filter-row button:hover {
-  border-color: oklch(
-    0.74 0.07 155
-  );
-
-  background: oklch(
-    0.93 0.04 155
-  );
+  border-color: oklch(0.74 0.07 155);
+  background: oklch(0.93 0.04 155);
 }
 
 .quick-filter-row
@@ -408,8 +423,7 @@
 .ke-home
   [aria-label="Event list"]
   li {
-  transition:
-    transform 0.15s ease;
+  transition: transform 0.15s ease;
 }
 
 .ke-home
@@ -433,16 +447,12 @@
 .ke-home
   .overflow-y-auto::-webkit-scrollbar-thumb {
   border-radius: 9999px;
-  background: oklch(
-    0.82 0.018 160
-  );
+  background: oklch(0.82 0.018 160);
 }
 
 .ke-home
   .overflow-y-auto::-webkit-scrollbar-thumb:hover {
-  background: oklch(
-    0.7 0.025 160
-  );
+  background: oklch(0.7 0.025 160);
 }
 
 /* Collapsible sections */
@@ -462,13 +472,9 @@
   min-height: 0;
 }
 
-.ke-collapse:not(
-    [data-open="true"]
-  )
-  > div {
+.ke-collapse:not([data-open="true"]) > div {
   visibility: hidden;
-  transition:
-    visibility 0s linear 0.26s;
+  transition: visibility 0s linear 0.26s;
 }
 
 /* Live indicator */
@@ -479,9 +485,7 @@
   height: 0.5rem;
   border-radius: 9999px;
   background: currentColor;
-  animation:
-    ke-live 1.8s ease-in-out
-    infinite;
+  animation: ke-live 1.8s ease-in-out infinite;
 }
 
 /* Loading skeleton */
@@ -493,18 +497,13 @@
     linear-gradient(
       90deg,
       var(--muted) 25%,
-      oklch(
-        0.985 0.004 155
-      )
-        50%,
+      oklch(0.985 0.004 155) 50%,
       var(--muted) 75%
     );
 
   background-size: 200% 100%;
 
-  animation:
-    ke-shimmer 1.4s linear
-    infinite;
+  animation: ke-shimmer 1.4s linear infinite;
 }
 
 /* Bottom sheets */
@@ -512,12 +511,7 @@
 .ke-sheet {
   transition:
     transform 0.3s
-    cubic-bezier(
-      0.2,
-      0.8,
-      0.2,
-      1
-    );
+    cubic-bezier(0.2, 0.8, 0.2, 1);
 
   will-change: transform;
 }
@@ -532,12 +526,7 @@
   .ke-dialog[data-state="open"] {
     animation:
       ke-rise 0.26s
-      cubic-bezier(
-        0.2,
-        0.8,
-        0.2,
-        1
-      );
+      cubic-bezier(0.2, 0.8, 0.2, 1);
   }
 }
 
@@ -546,7 +535,6 @@
 .ke-splash {
   position: fixed;
   inset: 0;
-
   z-index: 2000;
 
   display: flex;
@@ -555,22 +543,14 @@
   justify-content: center;
 
   gap: 1.75rem;
-
   padding: 1.5rem;
 
   background:
     radial-gradient(
       100% 80% at 50% 10%,
-      oklch(
-        0.995 0.008 155
-      ),
-      oklch(
-        0.985 0.006 150
-      )
-        55%,
-      oklch(
-        0.965 0.012 155
-      )
+      oklch(0.995 0.008 155),
+      oklch(0.985 0.006 150) 55%,
+      oklch(0.965 0.012 155)
     );
 
   color: var(--foreground);
@@ -622,9 +602,7 @@ html[data-ke-splash-seen="1"]
 
   box-shadow:
     0 10px 30px
-    oklch(
-      0.36 0.07 172 / 0.1
-    );
+    oklch(0.36 0.07 172 / 0.1);
 }
 
 .ke-emblem::before,
@@ -643,9 +621,7 @@ html[data-ke-splash-seen="1"]
       transparent
     );
 
-  animation:
-    ke-ring 2.2s ease-out
-    infinite;
+  animation: ke-ring 2.2s ease-out infinite;
 }
 
 .ke-emblem::after {
@@ -662,10 +638,7 @@ html[data-ke-splash-seen="1"]
 
   border-radius: 9999px;
 
-  background:
-    oklch(
-      0.88 0.012 160
-    );
+  background: oklch(0.88 0.012 160);
 }
 
 .ke-splash-bar > i {
@@ -680,12 +653,7 @@ html[data-ke-splash-seen="1"]
 
   animation:
     ke-progress 2s
-    cubic-bezier(
-      0.25,
-      0.6,
-      0.3,
-      1
-    )
+    cubic-bezier(0.25, 0.6, 0.3, 1)
     forwards;
 }
 
@@ -696,8 +664,7 @@ html[data-ke-splash-seen="1"]
 
   animation: none;
 
-  transition:
-    width 0.2s ease;
+  transition: width 0.2s ease;
 }
 
 /* Map markers */
@@ -711,11 +678,10 @@ html[data-ke-splash-seen="1"]
   filter:
     drop-shadow(
       0 2px 3px
-        rgb(0 0 0 / 0.28)
+      rgb(0 0 0 / 0.28)
     );
 
-  transition:
-    transform 0.15s ease;
+  transition: transform 0.15s ease;
 }
 
 .ke-pin:hover svg {
@@ -729,7 +695,7 @@ html[data-ke-splash-seen="1"]
     grayscale(1)
     drop-shadow(
       0 1px 2px
-        rgb(0 0 0 / 0.2)
+      rgb(0 0 0 / 0.2)
     );
 }
 
@@ -777,8 +743,7 @@ html[data-ke-splash-seen="1"]
 
   border-radius: 9999px;
 
-  background:
-    rgb(255 255 255 / 0.94);
+  background: rgb(255 255 255 / 0.94);
 
   padding: 1px 8px;
 
