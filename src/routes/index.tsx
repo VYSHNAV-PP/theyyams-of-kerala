@@ -1123,7 +1123,9 @@ function Home() {
                     </div>
                   )}
 
-                {/* DESKTOP PREVIEW ONLY */}
+                {/* =================================================
+                    DESKTOP EVENT PREVIEW
+                    ================================================= */}
 
                 {selected &&
                   view === "map" && (
@@ -1386,13 +1388,13 @@ function Home() {
       </main>
 
       {/* ======================================================
-          MOBILE EVENT BOTTOM SHEET
+          MOBILE / TABLET EVENT BOTTOM SHEET
           ====================================================== */}
 
       {selected &&
         view === "map" && (
           <>
-            {/* Backdrop */}
+            {/* Backdrop — mobile/tablet only */}
 
             <div
               className="fixed inset-0 z-[900] bg-black/20 backdrop-blur-[1px] lg:hidden"
@@ -1402,17 +1404,19 @@ function Home() {
               aria-hidden="true"
             />
 
-            {/* Fixed mobile sheet */}
+            {/* Swipeable mobile/tablet preview only */}
 
-            <EventPreview
-              e={selected}
-              mobile
-              onClose={() =>
-                setSelectedId(
-                  null,
-                )
-              }
-            />
+            <div className="lg:hidden">
+              <EventPreview
+                e={selected}
+                mobile
+                onClose={() =>
+                  setSelectedId(
+                    null,
+                  )
+                }
+              />
+            </div>
           </>
         )}
 
