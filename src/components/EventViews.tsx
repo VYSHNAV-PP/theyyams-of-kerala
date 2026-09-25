@@ -269,8 +269,7 @@ function EventThumbnail({
   const candidates = Array.from(
     new Set(
       [
-        ...(e.imageCandidates ??
-          []),
+        ...(e.imageCandidates ?? []),
         ...(e.imageUrl
           ? [e.imageUrl]
           : []),
@@ -331,8 +330,8 @@ export function EventPreview({
     useRef(false);
 
   /*
-   * Reset the sheet when another
-   * event is selected.
+   * Reset when a different event
+   * is selected.
    */
   useEffect(() => {
     setExpanded(false);
@@ -341,9 +340,36 @@ export function EventPreview({
     startY.current = null;
   }, [e.id]);
 
+  /*
+   * Prevent the page/map from
+   * scrolling while the user is
+   * dragging the sheet.
+   */
+  useEffect(() => {
+    if (!mobile || !dragging) {
+      return;
+    }
+
+    const previousOverflow =
+      document.body.style.overflow;
+
+    document.body.style.overflow =
+      "hidden";
+
+    return () => {
+      document.body.style.overflow =
+        previousOverflow;
+    };
+  }, [mobile, dragging]);
+
   const beginDrag = (
     event: React.PointerEvent<HTMLDivElement>,
   ) => {
+    /*
+     * Only use the gesture on
+     * touch/pen. Mouse remains
+     * normal desktop behavior.
+     */
     if (
       event.pointerType === "mouse"
     ) {
@@ -357,6 +383,7 @@ export function EventPreview({
       expanded;
 
     setDragging(true);
+    setDragY(0);
 
     event.currentTarget.setPointerCapture(
       event.pointerId,
@@ -377,14 +404,17 @@ export function EventPreview({
       event.clientY -
       startY.current;
 
+    /*
+     * COLLAPSED:
+     *
+     * Only upward movement.
+     * The old popup moves upward
+     * with the finger until release.
+     */
     if (!startExpanded.current) {
-      /*
-       * Compact state:
-       * only allow upward dragging.
-       */
       setDragY(
         Math.max(
-          -window.innerHeight * 0.72,
+          -window.innerHeight * 0.75,
           Math.min(delta, 0),
         ),
       );
@@ -393,15 +423,16 @@ export function EventPreview({
     }
 
     /*
-     * Expanded state:
-     * only allow downward dragging.
+     * EXPANDED:
+     *
+     * Only downward movement.
      */
     setDragY(
       Math.max(
         0,
         Math.min(
           delta,
-          window.innerHeight * 0.72,
+          window.innerHeight * 0.75,
         ),
       ),
     );
@@ -421,15 +452,18 @@ export function EventPreview({
       event.clientY -
       startY.current;
 
-    const threshold =
-      window.innerHeight * 0.12;
+    /*
+     * Smaller threshold makes
+     * the gesture feel natural.
+     */
+    const threshold = 70;
 
     setDragging(false);
     setDragY(0);
     startY.current = null;
 
     /*
-     * Compact → expanded.
+     * OLD POPUP → FULL SCREEN
      */
     if (
       !startExpanded.current &&
@@ -440,7 +474,7 @@ export function EventPreview({
     }
 
     /*
-     * Expanded → compact.
+     * FULL SCREEN → OLD POPUP
      */
     if (
       startExpanded.current &&
@@ -460,256 +494,297 @@ export function EventPreview({
     CATEGORY_META[e.category];
 
   /*
-   * Mobile:
+   * Mobile behavior:
    *
-   * compact ≈ 28vh
-   * expanded ≈ 94vh
+   * CLOSED:
+   *   Uses the original popup sizing.
    *
-   * Desktop doesn't use these dimensions.
+   * OPEN:
+   *   Nearly full viewport.
+   *
+   * We deliberately do NOT force
+   * the old popup to 28vh.
    */
-  const currentHeight =
-    mobile
-      ? expanded
-        ? "94dvh"
-        : "28dvh"
-      : undefined;
+  const mobileStyle = mobile
+    ? expanded
+      ? {
+          height:
+            "calc(100dvh - 8px)",
+          maxHeight:
+            "calc(100dvh - 8px)",
+        }
+      : {
+          height: "auto",
+          maxHeight: "55dvh",
+        }
+    : undefined;
 
   return (
-    <section
-      aria-label={`Preview: ${e.title}`}
-      data-dragging={dragging}
-      className={`relative flex flex-col overflow-hidden border border-border bg-card shadow-2xl ${
-        mobile
-          ? "fixed inset-x-0 bottom-0 z-[1000] rounded-t-3xl"
-          : "max-h-[55dvh] overflow-y-auto rounded-t-2xl lg:mx-auto lg:max-w-2xl lg:rounded-2xl"
-      }`}
-      style={{
-        height: currentHeight,
-        transform:
-          mobile && dragging
-            ? `translateY(${dragY}px)`
-            : undefined,
-        transition:
-          dragging
-            ? "none"
-            : "height 320ms cubic-bezier(0.22, 1, 0.36, 1), transform 320ms cubic-bezier(0.22, 1, 0.36, 1)",
-        willChange: mobile
-          ? "height, transform"
-          : undefined,
-      }}
-    >
+    <>
       {/* ======================================================
-          MOBILE DRAG HANDLE
+          EXPANDED BACKDROP
           ====================================================== */}
 
-      {mobile && (
+      {mobile && expanded && (
         <div
-          className="shrink-0 px-4 pb-2 pt-3"
-          style={{
-            touchAction: "none",
-          }}
-          onPointerDown={
-            beginDrag
+          className="fixed inset-0 z-[999] bg-black/15 backdrop-blur-[1px]"
+          aria-hidden="true"
+          onClick={() =>
+            setExpanded(false)
           }
-          onPointerMove={
-            moveDrag
-          }
-          onPointerUp={
-            endDrag
-          }
-          onPointerCancel={
-            cancelDrag
-          }
-        >
-          <button
-            type="button"
-            aria-label={
-              expanded
-                ? "Collapse event details"
-                : "Expand event details"
-            }
-            onClick={() =>
-              setExpanded(
-                (value) =>
-                  !value,
-              )
-            }
-            className="mx-auto block h-7 w-16 cursor-grab touch-none rounded-full py-2 active:cursor-grabbing"
-          >
-            <span className="mx-auto block h-1.5 w-12 rounded-full bg-muted-foreground/40" />
-          </button>
-
-          {!expanded && (
-            <p className="mt-1 text-center text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Swipe up for details
-            </p>
-          )}
-        </div>
+        />
       )}
 
-      {/* ======================================================
-          HEADER
-          ====================================================== */}
+      <section
+        aria-label={`Preview: ${e.title}`}
+        data-dragging={dragging}
+        className={`relative flex flex-col overflow-hidden border border-border bg-card shadow-2xl ${
+          mobile
+            ? "fixed inset-x-0 bottom-0 z-[1000] rounded-t-2xl"
+            : "max-h-[55dvh] overflow-y-auto rounded-t-2xl lg:mx-auto lg:max-w-2xl lg:rounded-2xl"
+        }`}
+        style={{
+          ...(mobileStyle ?? {}),
+          transform:
+            mobile && dragging
+              ? `translateY(${dragY}px)`
+              : undefined,
+          transition: dragging
+            ? "none"
+            : "height 380ms cubic-bezier(0.22, 1, 0.36, 1), max-height 380ms cubic-bezier(0.22, 1, 0.36, 1), transform 380ms cubic-bezier(0.22, 1, 0.36, 1)",
+          willChange: mobile
+            ? "height, max-height, transform"
+            : undefined,
+        }}
+      >
+        {/* ====================================================
+            MOBILE DRAG AREA
+            ==================================================== */}
 
-      <div className="shrink-0 px-4 pb-2">
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-            <CategoryBadge e={e} />
-            <StatusBadge e={e} />
-          </div>
-
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close preview"
-            className="-m-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full hover:bg-muted"
+        {mobile && (
+          <div
+            className="shrink-0 px-4 pb-1 pt-2"
+            style={{
+              touchAction: "none",
+            }}
+            onPointerDown={
+              beginDrag
+            }
+            onPointerMove={
+              moveDrag
+            }
+            onPointerUp={
+              endDrag
+            }
+            onPointerCancel={
+              cancelDrag
+            }
           >
-            <X
-              size={18}
-              aria-hidden="true"
-            />
-          </button>
-        </div>
-
-        <h2 className="mt-2 text-lg font-bold leading-snug">
-          {e.title}
-        </h2>
-      </div>
-
-      {/* ======================================================
-          SCROLLABLE CONTENT
-          ====================================================== */}
-
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-3">
-        {mobile && expanded && (
-          <div className="mb-3 h-40 overflow-hidden rounded-xl border border-border bg-muted">
-            <EventThumbnail
-              e={e}
-              color={m.hex}
-              icon={m.icon}
-            />
+            <button
+              type="button"
+              aria-label={
+                expanded
+                  ? "Collapse event details"
+                  : "Expand event details"
+              }
+              onClick={() =>
+                setExpanded(
+                  (value) =>
+                    !value,
+                )
+              }
+              className="mx-auto flex h-7 w-16 cursor-grab items-center justify-center rounded-full active:cursor-grabbing"
+            >
+              <span className="block h-1.5 w-12 rounded-full bg-muted-foreground/35" />
+            </button>
           </div>
         )}
 
-        <ul className="space-y-2 text-sm">
-          <li className="flex gap-2">
-            <MapPin
-              size={17}
-              className="mt-0.5 shrink-0"
-              aria-hidden="true"
-            />
+        {/* ====================================================
+            HEADER
+            ==================================================== */}
 
-            <span>
-              {e.venue},{" "}
-              {e.locality},{" "}
-              {e.district}
-            </span>
-          </li>
+        <div className="shrink-0 px-4 pb-2">
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+              <CategoryBadge e={e} />
 
-          <li className="flex gap-2">
-            <CalendarDays
-              size={17}
-              className="mt-0.5 shrink-0"
-              aria-hidden="true"
-            />
+              <StatusBadge e={e} />
+            </div>
 
-            <span>
-              {fmtWhen(e)}
-            </span>
-          </li>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close preview"
+              className="-m-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full hover:bg-muted"
+            >
+              <X
+                size={18}
+                aria-hidden="true"
+              />
+            </button>
+          </div>
 
-          <li className="flex gap-2">
-            <Ticket
-              size={17}
-              className="mt-0.5 shrink-0"
-              aria-hidden="true"
-            />
+          <h2 className="mt-2 text-lg font-bold leading-snug">
+            {e.title}
+          </h2>
+        </div>
 
-            <span>
-              {entryLabel(e)}
-            </span>
-          </li>
-        </ul>
+        {/* ====================================================
+            SCROLLABLE CONTENT
+            ==================================================== */}
 
-        <p
-          className={`mt-3 text-sm leading-relaxed text-muted-foreground ${
-            mobile && !expanded
-              ? "line-clamp-3"
-              : ""
-          }`}
+        <div
+          className={`
+            min-h-0
+            flex-1
+            overflow-y-auto
+            overscroll-contain
+            px-4
+            pb-3
+            ${
+              mobile && expanded
+                ? "touch-pan-y"
+                : ""
+            }
+          `}
         >
-          {e.description}
-        </p>
+          {/* IMAGE ONLY WHEN FULL SCREEN */}
 
-        {mobile && expanded && (
-          <div className="mt-4 space-y-3">
-            <div className="rounded-xl bg-muted/50 p-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Location
-              </p>
+          {mobile && expanded && (
+            <div className="mb-4 h-44 overflow-hidden rounded-xl border border-border bg-muted">
+              <EventThumbnail
+                e={e}
+                color={m.hex}
+                icon={m.icon}
+              />
+            </div>
+          )}
 
-              <p className="mt-1 text-sm font-medium">
-                {e.venue}
-              </p>
+          <ul className="space-y-2 text-sm">
+            <li className="flex gap-2">
+              <MapPin
+                size={17}
+                className="mt-0.5 shrink-0"
+                aria-hidden="true"
+              />
 
-              <p className="text-sm text-muted-foreground">
+              <span>
+                {e.venue},{" "}
                 {e.locality},{" "}
                 {e.district}
-              </p>
-            </div>
+              </span>
+            </li>
 
-            <div className="rounded-xl bg-muted/50 p-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Date & time
-              </p>
+            <li className="flex gap-2">
+              <CalendarDays
+                size={17}
+                className="mt-0.5 shrink-0"
+                aria-hidden="true"
+              />
 
-              <p className="mt-1 text-sm font-medium">
+              <span>
                 {fmtWhen(e)}
-              </p>
-            </div>
+              </span>
+            </li>
 
-            <div className="rounded-xl bg-muted/50 p-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Entry
-              </p>
+            <li className="flex gap-2">
+              <Ticket
+                size={17}
+                className="mt-0.5 shrink-0"
+                aria-hidden="true"
+              />
 
-              <p className="mt-1 text-sm font-medium">
+              <span>
                 {entryLabel(e)}
-              </p>
-            </div>
-          </div>
-        )}
-      </div>
+              </span>
+            </li>
+          </ul>
 
-      {/* ======================================================
-          FOOTER
-          ====================================================== */}
-
-      <div className="shrink-0 border-t border-border bg-card px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
-        <div className="flex items-center justify-between gap-3">
-          <span className="flex min-w-0 items-center gap-1 text-sm">
-            <ThumbsUp
-              size={14}
-              aria-hidden="true"
-            />
-
-            <span className="truncate">
-              {confirmText(
-                e.upvotes,
-              )}
-            </span>
-          </span>
-
-          <Link
-            to="/event/$id"
-            params={{ id: e.id }}
-            className="flex h-10 shrink-0 items-center justify-center rounded-full bg-primary px-5 text-sm font-semibold text-primary-foreground hover:opacity-90"
+          <p
+            className={`mt-3 text-sm leading-relaxed text-muted-foreground ${
+              mobile && !expanded
+                ? "line-clamp-3"
+                : ""
+            }`}
           >
-            View Event
-          </Link>
+            {e.description}
+          </p>
+
+          {/* ==================================================
+              EXTRA DETAILS ONLY IN EXPANDED MODE
+             ================================================== */}
+
+          {mobile && expanded && (
+            <div className="mt-5 space-y-3 pb-2">
+              <div className="rounded-xl border border-border bg-muted/40 p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Location
+                </p>
+
+                <p className="mt-1 text-sm font-medium">
+                  {e.venue}
+                </p>
+
+                <p className="text-sm text-muted-foreground">
+                  {e.locality},{" "}
+                  {e.district}
+                </p>
+              </div>
+
+              <div className="rounded-xl border border-border bg-muted/40 p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Date & time
+                </p>
+
+                <p className="mt-1 text-sm font-medium">
+                  {fmtWhen(e)}
+                </p>
+              </div>
+
+              <div className="rounded-xl border border-border bg-muted/40 p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Entry
+                </p>
+
+                <p className="mt-1 text-sm font-medium">
+                  {entryLabel(e)}
+                </p>
+              </div>
+            </div>
+          )}
         </div>
-      </div>
-    </section>
+
+        {/* ====================================================
+            FOOTER
+            ==================================================== */}
+
+        <div className="shrink-0 border-t border-border bg-card px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
+          <div className="flex items-center justify-between gap-3">
+            <span className="flex min-w-0 items-center gap-1 text-sm">
+              <ThumbsUp
+                size={14}
+                aria-hidden="true"
+              />
+
+              <span className="truncate">
+                {confirmText(
+                  e.upvotes,
+                )}
+              </span>
+            </span>
+
+            <Link
+              to="/event/$id"
+              params={{ id: e.id }}
+              className="flex h-10 shrink-0 items-center justify-center rounded-full bg-primary px-5 text-sm font-semibold text-primary-foreground hover:opacity-90"
+            >
+              View Event
+            </Link>
+          </div>
+        </div>
+      </section>
+    </>
   );
 }
 
@@ -758,6 +833,7 @@ export function EventRow({
           <span className="flex min-w-0 flex-wrap items-center gap-1.5">
             <span className="truncate text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
               {e.category}
+
               {e.subcategory
                 ? ` · ${e.subcategory}`
                 : ""}
