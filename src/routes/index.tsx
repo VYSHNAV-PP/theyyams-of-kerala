@@ -1173,6 +1173,13 @@ function Home() {
           askLocation
         }
       />
+
+      {/* FOOTER */}
+      <footer className="flex h-8 shrink-0 items-center justify-center border-t border-border bg-background">
+        <p className="text-[11px] text-muted-foreground">
+          © 2026 Kerala Events
+        </p>
+      </footer>
     </div>
   );
 }
