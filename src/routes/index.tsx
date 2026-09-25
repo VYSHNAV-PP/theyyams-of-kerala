@@ -35,6 +35,7 @@ import {
   applyFilters,
   contextPlace,
   fetchEvents,
+  statusOf,
   type DateKey,
   type Filters,
   type KEvent,
@@ -172,6 +173,15 @@ function Home() {
       "map" | "list"
     >("map");
 
+  /*
+   * Normal list = active events
+   * Ended list = ended events
+   */
+  const [
+    showEnded,
+    setShowEnded,
+  ] = useState(false);
+
   const [
     selectedId,
     setSelectedId,
@@ -300,13 +310,58 @@ function Home() {
   );
 
   /* ==========================================================
+     SPLIT ACTIVE / ENDED EVENTS
+     ========================================================== */
+
+  const endedEvents =
+    useMemo(
+      () =>
+        filtered.filter(
+          (event) =>
+            statusOf(
+              event,
+              now,
+            ) === "ended",
+        ),
+      [filtered, now],
+    );
+
+  const activeEvents =
+    useMemo(
+      () =>
+        filtered.filter(
+          (event) =>
+            statusOf(
+              event,
+              now,
+            ) !== "ended",
+        ),
+      [filtered, now],
+    );
+
+  /*
+   * ONLY active events are sent to the map.
+   */
+  const mapEvents =
+    activeEvents;
+
+  /*
+   * The list displays either active events
+   * or ended events depending on the button.
+   */
+  const visibleListEvents =
+    showEnded
+      ? endedEvents
+      : activeEvents;
+
+  /* ==========================================================
      MAP CONTEXT
      ========================================================== */
 
   const place =
     contextPlace(
       vp
-        ? filtered.filter(
+        ? mapEvents.filter(
             (e) =>
               e.lat >=
                 vp.bounds[0] &&
@@ -317,15 +372,15 @@ function Home() {
               e.lng <=
                 vp.bounds[3],
           )
-        : filtered,
+        : mapEvents,
       vp?.zoom ?? 7,
       f.district,
     );
 
   const placeCount =
     place === "Kerala"
-      ? filtered.length
-      : filtered.filter(
+      ? activeEvents.length
+      : activeEvents.filter(
           (e) =>
             e.district ===
               place ||
@@ -361,7 +416,7 @@ function Home() {
         };
       }
 
-      if (!filtered.length) {
+      if (!mapEvents.length) {
         return {
           key,
           bounds: null,
@@ -369,12 +424,12 @@ function Home() {
       }
 
       const lats =
-        filtered.map(
+        mapEvents.map(
           (e) => e.lat,
         );
 
       const lngs =
-        filtered.map(
+        mapEvents.map(
           (e) => e.lng,
         );
 
@@ -409,7 +464,7 @@ function Home() {
       dq,
       f.category,
       f.subcategory,
-      all,
+      mapEvents,
     ],
   );
 
@@ -418,11 +473,31 @@ function Home() {
      ========================================================== */
 
   const selected =
-    filtered.find(
+    activeEvents.find(
       (e) =>
         e.id ===
         selectedId,
     ) ?? null;
+
+  /*
+   * If an event becomes ended while it is selected,
+   * remove the selection so it cannot remain on the map.
+   */
+  useEffect(() => {
+    if (
+      selectedId &&
+      !activeEvents.some(
+        (e) =>
+          e.id ===
+          selectedId,
+      )
+    ) {
+      setSelectedId(null);
+    }
+  }, [
+    selectedId,
+    activeEvents,
+  ]);
 
   /* ==========================================================
      SEARCH
@@ -444,10 +519,25 @@ function Home() {
 
   const onSelect =
     useCallback(
-      (e: KEvent) =>
+      (e: KEvent) => {
+        /*
+         * Extra protection:
+         * never select an ended event.
+         */
+        if (
+          statusOf(
+            e,
+            Date.now(),
+          ) === "ended"
+        ) {
+          return;
+        }
+
+        setShowEnded(false);
         setSelectedId(
           e.id,
-        ),
+        );
+      },
       [],
     );
 
@@ -458,6 +548,21 @@ function Home() {
   const pickFromList = (
     e: KEvent,
   ) => {
+    /*
+     * Ended events live only inside the ended list.
+     * Do not send the user back to the map for them.
+     */
+    if (
+      statusOf(
+        e,
+        now,
+      ) === "ended"
+    ) {
+      setSelectedId(null);
+      return;
+    }
+
+    setShowEnded(false);
     setSelectedId(e.id);
 
     setFocus({
@@ -537,6 +642,12 @@ function Home() {
           x,
           now,
           user,
+        ).filter(
+          (event) =>
+            statusOf(
+              event,
+              now,
+            ) !== "ended",
         ).length,
       [all, now, user],
     );
@@ -569,30 +680,46 @@ function Home() {
       ) || !!f.q;
 
   /* ==========================================================
+     EMPTY STATES
+     ========================================================== */
+
+  const activeEmpty =
+    q.isSuccess &&
+    activeEvents.length === 0;
+
+  const endedEmpty =
+    q.isSuccess &&
+    endedEvents.length === 0;
+
+  /* ==========================================================
      EVENT LIST
      ========================================================== */
 
   const list = (
-    <ul aria-label="Events">
-      {filtered.map((e) => (
-        <EventRow
-          key={e.id}
-          e={e}
-          active={
-            e.id ===
-            selectedId
-          }
-          onClick={() =>
-            pickFromList(e)
-          }
-        />
-      ))}
+    <ul
+      aria-label={
+        showEnded
+          ? "Ended events"
+          : "Events"
+      }
+    >
+      {visibleListEvents.map(
+        (e) => (
+          <EventRow
+            key={e.id}
+            e={e}
+            active={
+              e.id ===
+              selectedId
+            }
+            onClick={() =>
+              pickFromList(e)
+            }
+          />
+        ),
+      )}
     </ul>
   );
-
-  const empty =
-    q.isSuccess &&
-    filtered.length === 0;
 
   /* ==========================================================
      RENDER
@@ -901,7 +1028,7 @@ function Home() {
           MAIN WORKSPACE
           ===================================================== */}
 
-      <main className="relative flex-1 [touch-action:pan-y]">
+      <main className="relative flex min-h-0 flex-1 flex-col overflow-hidden [touch-action:pan-y]">
         {/* MOBILE / TABLET CONTROLS */}
 
         <div className="shrink-0 border-b border-border bg-card px-2 py-2 lg:hidden">
@@ -984,7 +1111,7 @@ function Home() {
 
         {/* SMALL DESCRIPTION */}
 
-        <div className="mx-auto w-full max-w-[1800px] px-2 pt-2 sm:px-3 sm:pt-3 lg:px-4">
+        <div className="mx-auto w-full max-w-[1800px] shrink-0 px-2 pt-2 sm:px-3 sm:pt-3 lg:px-4">
           <p className="text-center text-xs text-muted-foreground sm:text-sm">
             Explore events across Kerala —
             browse the map, filter by category
@@ -997,14 +1124,15 @@ function Home() {
             WORKSPACE
             =================================================== */}
 
-        <div className="mx-auto w-full max-w-[1800px] px-1.5 py-1.5 sm:px-2 sm:py-2 md:px-3 lg:px-4">
-          <div className="relative flex min-h-0 gap-2 sm:gap-3 lg:h-[calc(100dvh-260px)] lg:min-h-[520px] lg:gap-4">
+        <div className="mx-auto flex min-h-0 w-full max-w-[1800px] flex-1 px-1.5 py-1.5 sm:px-2 sm:py-2 md:px-3 lg:px-4">
+          <div className="relative flex min-h-0 w-full flex-1 gap-2 sm:gap-3 lg:h-[calc(100dvh-260px)] lg:min-h-[520px] lg:gap-4">
+
             {/* =================================================
                 MAP PANEL
                 ================================================= */}
 
             {showMap && (
-              <div className="relative min-h-[62vh] min-w-0 flex-1 overflow-hidden rounded-xl border border-border bg-muted shadow-sm [touch-action:auto] sm:min-h-[620px] sm:rounded-2xl lg:min-h-0">
+              <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden rounded-xl border border-border bg-muted shadow-sm [touch-action:auto] sm:rounded-2xl lg:min-h-0">
                 <ClientOnly
                   fallback={
                     <div className="flex h-full items-center justify-center bg-muted text-sm text-muted-foreground">
@@ -1021,7 +1149,10 @@ function Home() {
                   >
                     <EventMap
                       key="event-map"
-                      events={filtered}
+                      /*
+                       * ONLY active events reach the map.
+                       */
+                      events={mapEvents}
                       selectedId={
                         selectedId
                       }
@@ -1082,12 +1213,12 @@ function Home() {
                   </div>
                 )}
 
-                {empty &&
+                {activeEmpty &&
                   !selected && (
                     <div className="absolute inset-x-2 bottom-3 z-[500] mx-auto max-w-sm rounded-lg border border-border bg-card p-4 text-center shadow-lg sm:inset-x-3 sm:bottom-4">
                       <p className="text-sm font-semibold">
                         {all?.length
-                          ? "No events match these filters"
+                          ? "No active events match these filters"
                           : "No events on the map yet"}
                       </p>
 
@@ -1104,6 +1235,28 @@ function Home() {
                           >
                             Clear
                             filters
+                          </button>
+                        )}
+
+                        {endedEvents.length >
+                          0 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowEnded(
+                                true,
+                              );
+                              setView(
+                                "list",
+                              );
+                            }}
+                            className="h-9 rounded-md border border-border px-3 text-sm font-medium hover:bg-muted"
+                          >
+                            View ended (
+                            {
+                              endedEvents.length
+                            }
+                            )
                           </button>
                         )}
 
@@ -1168,12 +1321,19 @@ function Home() {
                     >
                       {q.isLoading
                         ? "Loading events…"
-                        : `${place} · ${placeCount} ${
-                            placeCount ===
-                            1
-                              ? "event"
-                              : "events"
-                          }`}
+                        : showEnded
+                          ? `${endedEvents.length} ${
+                              endedEvents.length ===
+                              1
+                                ? "ended event"
+                                : "ended events"
+                            }`
+                          : `${place} · ${placeCount} ${
+                              placeCount ===
+                              1
+                                ? "event"
+                                : "events"
+                            }`}
                     </p>
 
                     {f.subcategory && (
@@ -1184,6 +1344,48 @@ function Home() {
                   </div>
 
                   <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+                    {/* ENDED EVENTS BUTTON */}
+
+                    <button
+                      type="button"
+                      aria-pressed={
+                        showEnded
+                      }
+                      onClick={() => {
+                        setShowEnded(
+                          (value) =>
+                            !value,
+                        );
+                        setSelectedId(
+                          null,
+                        );
+                      }}
+                      className={`flex h-9 items-center gap-1.5 rounded-md border px-2.5 text-sm font-medium transition-colors sm:px-3 ${
+                        showEnded
+                          ? "border-foreground bg-foreground text-background"
+                          : "border-border bg-card hover:bg-muted"
+                      }`}
+                    >
+                      <span>
+                        Ended
+                      </span>
+
+                      {endedEvents.length >
+                        0 && (
+                        <span
+                          className={`rounded-full px-1.5 text-xs ${
+                            showEnded
+                              ? "bg-background/20 text-background"
+                              : "bg-muted text-muted-foreground"
+                          }`}
+                        >
+                          {
+                            endedEvents.length
+                          }
+                        </span>
+                      )}
+                    </button>
+
                     <button
                       type="button"
                       onClick={() =>
@@ -1223,11 +1425,14 @@ function Home() {
                           view ===
                           "map"
                         }
-                        onClick={() =>
+                        onClick={() => {
+                          setShowEnded(
+                            false,
+                          );
                           setView(
                             "map",
-                          )
-                        }
+                          );
+                        }}
                         className={`flex h-9 items-center gap-1.5 px-2.5 text-sm font-medium ${
                           view ===
                           "map"
@@ -1279,7 +1484,7 @@ function Home() {
 
               {/* EVENT LIST */}
 
-              <div className="min-h-0 flex-1 overflow-y-auto">
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
                 {q.isLoading && (
                   <p className="p-4 text-sm text-muted-foreground">
                     Loading
@@ -1295,13 +1500,55 @@ function Home() {
                   </p>
                 )}
 
-                {empty && (
-                  <p className="p-4 text-sm text-muted-foreground">
-                    Nothing to show
-                    for the current
-                    filters.
-                  </p>
-                )}
+                {!q.isLoading &&
+                  !q.isError &&
+                  (showEnded
+                    ? endedEmpty
+                    : activeEmpty) && (
+                    <div className="p-6 text-center">
+                      <p className="text-sm font-semibold">
+                        {showEnded
+                          ? "No ended events"
+                          : "Nothing to show"}
+                      </p>
+
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {showEnded
+                          ? "There are no ended events matching the current filters."
+                          : "Nothing matches the current filters."}
+                      </p>
+
+                      {showEnded && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setShowEnded(
+                              false,
+                            )
+                          }
+                          className="mt-3 h-9 rounded-md border border-border px-3 text-sm font-medium hover:bg-muted"
+                        >
+                          Back to events
+                        </button>
+                      )}
+
+                      {!showEnded &&
+                        filtersOn && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setF(
+                                DEFAULT_FILTERS,
+                              )
+                            }
+                            className="mt-3 h-9 rounded-md border border-border px-3 text-sm font-medium hover:bg-muted"
+                          >
+                            Clear
+                            filters
+                          </button>
+                        )}
+                    </div>
+                  )}
 
                 {list}
               </div>
@@ -1312,8 +1559,8 @@ function Home() {
                 ================================================= */}
 
             {view === "list" && (
-              <div className="min-h-[62vh] min-w-0 flex-1 overflow-y-auto rounded-xl border border-border bg-card shadow-sm sm:min-h-[620px] sm:rounded-2xl lg:hidden">
-                <div className="border-b border-border px-2.5 py-2 sm:px-3">
+              <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm sm:rounded-2xl lg:hidden">
+                <div className="shrink-0 border-b border-border px-2.5 py-2 sm:px-3">
                   <div className="flex items-center justify-between gap-2">
                     <p
                       className="min-w-0 truncate text-sm font-semibold"
@@ -1321,66 +1568,141 @@ function Home() {
                     >
                       {q.isLoading
                         ? "Loading events…"
-                        : `${place} · ${placeCount} ${
-                            placeCount ===
-                            1
-                              ? "event"
-                              : "events"
-                          }`}
+                        : showEnded
+                          ? `${endedEvents.length} ${
+                              endedEvents.length ===
+                              1
+                                ? "ended event"
+                                : "ended events"
+                            }`
+                          : `${place} · ${placeCount} ${
+                              placeCount ===
+                              1
+                                ? "event"
+                                : "events"
+                            }`}
                     </p>
+
+                    {/* MOBILE ENDED BUTTON */}
+
+                    <button
+                      type="button"
+                      aria-pressed={
+                        showEnded
+                      }
+                      onClick={() => {
+                        setShowEnded(
+                          (value) =>
+                            !value,
+                        );
+                        setSelectedId(
+                          null,
+                        );
+                      }}
+                      className={`flex h-9 shrink-0 items-center gap-1.5 rounded-md border px-2.5 text-sm font-medium ${
+                        showEnded
+                          ? "border-foreground bg-foreground text-background"
+                          : "border-border bg-card hover:bg-muted"
+                      }`}
+                    >
+                      <span>
+                        Ended
+                      </span>
+
+                      {endedEvents.length >
+                        0 && (
+                        <span
+                          className={`rounded-full px-1.5 text-xs ${
+                            showEnded
+                              ? "bg-background/20 text-background"
+                              : "bg-muted text-muted-foreground"
+                          }`}
+                        >
+                          {
+                            endedEvents.length
+                          }
+                        </span>
+                      )}
+                    </button>
                   </div>
                 </div>
 
-                {q.isLoading && (
-                  <p className="p-6 text-center text-sm text-muted-foreground">
-                    Loading events…
-                  </p>
-                )}
+                {/* IMPORTANT:
+                    This is now the ONLY scrolling area
+                    on mobile/tablet. */}
 
-                {q.isError && (
-                  <div
-                    role="alert"
-                    className="p-6 text-center text-sm"
-                  >
-                    We couldn't load
-                    events.{" "}
-                    <button
-                      type="button"
-                      className="text-primary underline"
-                      onClick={() =>
-                        void q.refetch()
-                      }
-                    >
-                      Retry
-                    </button>
-                  </div>
-                )}
-
-                {empty && (
-                  <div className="p-8 text-center text-sm">
-                    <p className="font-semibold">
-                      {all?.length
-                        ? "No events match these filters"
-                        : "No events yet"}
+                <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+                  {q.isLoading && (
+                    <p className="p-6 text-center text-sm text-muted-foreground">
+                      Loading events…
                     </p>
+                  )}
 
-                    {filtersOn && (
+                  {q.isError && (
+                    <div
+                      role="alert"
+                      className="p-6 text-center text-sm"
+                    >
+                      We couldn't load
+                      events.{" "}
                       <button
                         type="button"
+                        className="text-primary underline"
                         onClick={() =>
-                          setF(
-                            DEFAULT_FILTERS,
-                          )
+                          void q.refetch()
                         }
-                        className="mt-2 text-primary underline"
                       >
-                        Clear filters
+                        Retry
                       </button>
-                    )}
-                  </div>
-                )}
+                    </div>
+                  )}
 
-                {list}
+                  {!q.isLoading &&
+                    !q.isError &&
+                    (showEnded
+                      ? endedEmpty
+                      : activeEmpty) && (
+                      <div className="p-8 text-center text-sm">
+                        <p className="font-semibold">
+                          {showEnded
+                            ? "No ended events"
+                            : all?.length
+                              ? "No active events match these filters"
+                              : "No events yet"}
+                        </p>
+
+                        {showEnded ? (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setShowEnded(
+                                false,
+                              )
+                            }
+                            className="mt-2 text-primary underline"
+                          >
+                            Back to events
+                          </button>
+                        ) : (
+                          filtersOn && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setF(
+                                  DEFAULT_FILTERS,
+                                )
+                              }
+                              className="mt-2 text-primary underline"
+                            >
+                              Clear filters
+                            </button>
+                          )
+                        )}
+                      </div>
+                    )}
+
+                  {list}
+                </div>
               </div>
             )}
           </div>

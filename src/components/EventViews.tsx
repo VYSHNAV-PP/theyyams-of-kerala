@@ -315,15 +315,9 @@ export function EventPreview({
   mobile?: boolean;
 }) {
   /*
-   * ----------------------------------------------------------
-   * DESKTOP
-   *
-   * Completely separate from the mobile gesture system.
-   * This prevents mobile sheet changes from affecting
-   * laptop/desktop rendering.
-   * ----------------------------------------------------------
+   * Desktop and mobile are deliberately
+   * kept as separate components.
    */
-
   if (!mobile) {
     return (
       <DesktopEventPreview
@@ -332,12 +326,6 @@ export function EventPreview({
       />
     );
   }
-
-  /*
-   * ----------------------------------------------------------
-   * MOBILE / TABLET
-   * ----------------------------------------------------------
-   */
 
   return (
     <MobileEventPreview
@@ -358,9 +346,6 @@ function DesktopEventPreview({
   e: KEvent;
   onClose: () => void;
 }) {
-  const m =
-    CATEGORY_META[e.category];
-
   return (
     <section
       aria-label={`Preview: ${e.title}`}
@@ -486,11 +471,18 @@ function MobileEventPreview({
   const [expanded, setExpanded] =
     useState(false);
 
-  const [dragY, setDragY] =
-    useState(0);
+  /*
+   * Actual compact height of the
+   * naturally-sized card.
+   */
+  const [collapsedHeight, setCollapsedHeight] =
+    useState<number | null>(null);
 
   const [dragging, setDragging] =
     useState(false);
+
+  const sheetRef =
+    useRef<HTMLElement | null>(null);
 
   const startY =
     useRef<number | null>(null);
@@ -501,26 +493,99 @@ function MobileEventPreview({
   const activePointer =
     useRef<number | null>(null);
 
+  const collapsedHeightRef =
+    useRef<number | null>(null);
+
   const m =
     CATEGORY_META[e.category];
 
   /*
-   * Reset sheet when a different
-   * event is selected.
+   * Keep the ref synchronized with
+   * the state.
+   */
+  useEffect(() => {
+    collapsedHeightRef.current =
+      collapsedHeight;
+  }, [collapsedHeight]);
+
+  /*
+   * Measure the natural compact
+   * height whenever the selected
+   * event changes.
    */
   useEffect(() => {
     setExpanded(false);
-    setDragY(0);
     setDragging(false);
 
     startY.current = null;
-    activePointer.current =
-      null;
+    activePointer.current = null;
+
+    /*
+     * Wait until the collapsed
+     * version has rendered.
+     */
+    requestAnimationFrame(() => {
+      const element =
+        sheetRef.current;
+
+      if (!element) {
+        return;
+      }
+
+      const height =
+        element.scrollHeight;
+
+      if (height > 0) {
+        setCollapsedHeight(
+          height,
+        );
+      }
+    });
   }, [e.id]);
 
   /*
-   * Lock page scrolling while the
-   * sheet itself is being dragged.
+   * Re-measure the compact card
+   * when viewport dimensions change.
+   */
+  useEffect(() => {
+    const measure = () => {
+      if (expanded) {
+        return;
+      }
+
+      const element =
+        sheetRef.current;
+
+      if (!element) {
+        return;
+      }
+
+      const height =
+        element.scrollHeight;
+
+      if (height > 0) {
+        setCollapsedHeight(
+          height,
+        );
+      }
+    };
+
+    window.addEventListener(
+      "resize",
+      measure,
+    );
+
+    return () => {
+      window.removeEventListener(
+        "resize",
+        measure,
+      );
+    };
+  }, [expanded]);
+
+  /*
+   * Lock page scrolling only while
+   * the swipe gesture is active.
    */
   useEffect(() => {
     if (!dragging) {
@@ -549,12 +614,10 @@ function MobileEventPreview({
   }, [dragging]);
 
   /*
-   * Start gesture.
+   * Begin swipe gesture.
    *
-   * The gesture area is deliberately
-   * larger than the little handle.
-   * Users can grab the upper part of
-   * the card naturally.
+   * This is attached to the handle +
+   * header, not the scrollable content.
    */
   const beginDrag = (
     event: React.PointerEvent<HTMLDivElement>,
@@ -575,13 +638,20 @@ function MobileEventPreview({
       event.pointerId;
 
     setDragging(true);
-    setDragY(0);
 
     event.currentTarget.setPointerCapture(
       event.pointerId,
     );
   };
 
+  /*
+   * We intentionally DO NOT move the
+   * sheet while the finger moves.
+   *
+   * This makes the interaction feel
+   * like a proper bottom sheet instead
+   * of a card being physically dragged.
+   */
   const moveDrag = (
     event: React.PointerEvent<HTMLDivElement>,
   ) => {
@@ -594,55 +664,17 @@ function MobileEventPreview({
       return;
     }
 
-    const delta =
-      event.clientY -
-      startY.current;
-
     /*
-     * CLOSED → only allow upward
-     * movement.
+     * Prevent browser gestures from
+     * interfering with the gesture.
      */
-    if (!startExpanded.current) {
-      const upward =
-        Math.min(delta, 0);
-
-      /*
-       * Add resistance near the
-       * maximum travel distance.
-       */
-      const maxTravel =
-        window.innerHeight *
-        0.78;
-
-      setDragY(
-        Math.max(
-          -maxTravel,
-          upward,
-        ),
-      );
-
-      return;
-    }
-
-    /*
-     * OPEN → only allow downward
-     * movement.
-     */
-    const downward =
-      Math.max(delta, 0);
-
-    const maxTravel =
-      window.innerHeight *
-      0.78;
-
-    setDragY(
-      Math.min(
-        maxTravel,
-        downward,
-      ),
-    );
+    event.preventDefault();
   };
 
+  /*
+   * Finish the swipe and snap to the
+   * next state.
+   */
   const finishDrag = (
     event: React.PointerEvent<HTMLDivElement>,
   ) => {
@@ -657,24 +689,18 @@ function MobileEventPreview({
       event.clientY -
       startY.current;
 
-    const threshold = 60;
+    const threshold = 55;
 
-    /*
-     * Save the state before resetting
-     * the gesture.
-     */
     const wasExpanded =
       startExpanded.current;
 
     setDragging(false);
-    setDragY(0);
 
     startY.current = null;
-    activePointer.current =
-      null;
+    activePointer.current = null;
 
     /*
-     * CLOSED → EXPAND
+     * Swipe UP from collapsed.
      */
     if (
       !wasExpanded &&
@@ -685,7 +711,7 @@ function MobileEventPreview({
     }
 
     /*
-     * EXPANDED → COLLAPSE
+     * Swipe DOWN from expanded.
      */
     if (
       wasExpanded &&
@@ -697,24 +723,30 @@ function MobileEventPreview({
 
   const cancelDrag = () => {
     setDragging(false);
-    setDragY(0);
 
     startY.current = null;
-    activePointer.current =
-      null;
+    activePointer.current = null;
   };
 
   /*
-   * The collapsed sheet keeps its
-   * natural content height.
+   * If the compact height hasn't
+   * been measured yet, let the browser
+   * naturally size the first render.
    *
-   * Expanded sheet occupies almost
-   * the entire viewport.
+   * After that we animate between:
+   *
+   * compactHeight
+   *
+   * and
+   *
+   * viewportHeight
    */
-  const sheetHeight =
+  const targetHeight =
     expanded
       ? "calc(100dvh - 8px)"
-      : "auto";
+      : collapsedHeight
+        ? `${collapsedHeight}px`
+        : "auto";
 
   return (
     <>
@@ -732,33 +764,38 @@ function MobileEventPreview({
         />
       )}
 
+      {/* ======================================================
+          SHEET
+          ====================================================== */}
+
       <section
+        ref={sheetRef}
         aria-label={`Preview: ${e.title}`}
-        className={`fixed inset-x-0 bottom-0 z-[1000] flex flex-col overflow-hidden rounded-t-2xl border border-border bg-card shadow-2xl ${
-          expanded
-            ? "rounded-t-2xl"
-            : ""
-        }`}
+        className="fixed inset-x-0 bottom-0 z-[1000] flex flex-col overflow-hidden rounded-t-2xl border border-border bg-card shadow-2xl"
         style={{
-          height: sheetHeight,
+          height: targetHeight,
           maxHeight:
             "calc(100dvh - 8px)",
-          transform: dragging
-            ? `translate3d(0, ${dragY}px, 0)`
-            : "translate3d(0, 0, 0)",
+
+          /*
+           * No translate transform.
+           *
+           * The sheet itself smoothly
+           * expands/collapses.
+           */
           transition: dragging
             ? "none"
-            : "height 320ms cubic-bezier(0.22, 1, 0.36, 1), transform 260ms cubic-bezier(0.22, 1, 0.36, 1)",
-          willChange:
-            "height, transform",
+            : "height 360ms cubic-bezier(0.22, 1, 0.36, 1)",
+
+          willChange: "height",
         }}
       >
         {/* ====================================================
-            DRAG HANDLE / GESTURE AREA
+            GESTURE HEADER
             ==================================================== */}
 
         <div
-          className="relative z-10 shrink-0 px-4 pt-1"
+          className="relative z-10 shrink-0"
           style={{
             touchAction: "none",
           }}
@@ -775,71 +812,50 @@ function MobileEventPreview({
             cancelDrag
           }
         >
-          <button
-            type="button"
-            tabIndex={-1}
-            aria-label={
-              expanded
-                ? "Collapse event details"
-                : "Expand event details"
-            }
-            onClick={() =>
-              setExpanded(
-                (value) =>
-                  !value,
-              )
-            }
-            className="mx-auto flex h-10 w-full max-w-24 items-center justify-center rounded-full"
-          >
-            <span className="block h-1.5 w-12 rounded-full bg-muted-foreground/35" />
-          </button>
-        </div>
+          {/* HANDLE */}
 
-        {/* ====================================================
-            HEADER
-            ==================================================== */}
-
-        <div
-          className="shrink-0 px-4 pb-3"
-          style={{
-            touchAction: "none",
-          }}
-          onPointerDown={
-            beginDrag
-          }
-          onPointerMove={
-            moveDrag
-          }
-          onPointerUp={
-            finishDrag
-          }
-          onPointerCancel={
-            cancelDrag
-          }
-        >
-          <div className="flex items-start justify-between gap-2">
-            <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-              <CategoryBadge e={e} />
-
-              <StatusBadge e={e} />
-            </div>
-
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Close preview"
-              className="-m-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full hover:bg-muted"
-            >
-              <X
-                size={18}
-                aria-hidden="true"
-              />
-            </button>
+          <div className="flex h-9 items-center justify-center">
+            <span
+              aria-hidden="true"
+              className="block h-1.5 w-12 rounded-full bg-muted-foreground/35"
+            />
           </div>
 
-          <h2 className="mt-2 text-lg font-bold leading-snug">
-            {e.title}
-          </h2>
+          {/* HEADER */}
+
+          <div className="px-4 pb-3">
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                <CategoryBadge e={e} />
+
+                <StatusBadge e={e} />
+              </div>
+
+              <button
+                type="button"
+                onPointerDown={(event) => {
+                  /*
+                   * Prevent the close button
+                   * from starting the sheet
+                   * swipe gesture.
+                   */
+                  event.stopPropagation();
+                }}
+                onClick={onClose}
+                aria-label="Close preview"
+                className="-m-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full hover:bg-muted"
+              >
+                <X
+                  size={18}
+                  aria-hidden="true"
+                />
+              </button>
+            </div>
+
+            <h2 className="mt-2 text-lg font-bold leading-snug">
+              {e.title}
+            </h2>
+          </div>
         </div>
 
         {/* ====================================================
@@ -857,7 +873,7 @@ function MobileEventPreview({
               "touch",
           }}
         >
-          {/* IMAGE IN EXPANDED MODE */}
+          {/* IMAGE */}
 
           {expanded && (
             <div className="mb-4 h-44 overflow-hidden rounded-xl border border-border bg-muted">
@@ -910,6 +926,8 @@ function MobileEventPreview({
               </span>
             </li>
           </ul>
+
+          {/* DESCRIPTION */}
 
           <p
             className={`mt-3 text-sm leading-relaxed text-muted-foreground ${
