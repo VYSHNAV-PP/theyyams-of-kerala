@@ -173,10 +173,6 @@ function Home() {
       "map" | "list"
     >("map");
 
-  /*
-   * Normal list = active events
-   * Ended list = ended events
-   */
   const [
     showEnded,
     setShowEnded,
@@ -221,10 +217,6 @@ function Home() {
       Date.now(),
     );
 
-  /*
-   * EventMap must not be mounted while
-   * the mobile list is displayed.
-   */
   const isDesktop =
     useIsDesktop();
 
@@ -339,16 +331,9 @@ function Home() {
       [filtered, now],
     );
 
-  /*
-   * ONLY active events are sent to the map.
-   */
   const mapEvents =
     activeEvents;
 
-  /*
-   * The list displays either active events
-   * or ended events depending on the button.
-   */
   const visibleListEvents =
     showEnded
       ? endedEvents
@@ -479,10 +464,6 @@ function Home() {
         selectedId,
     ) ?? null;
 
-  /*
-   * If an event becomes ended while it is selected,
-   * remove the selection so it cannot remain on the map.
-   */
   useEffect(() => {
     if (
       selectedId &&
@@ -520,10 +501,6 @@ function Home() {
   const onSelect =
     useCallback(
       (e: KEvent) => {
-        /*
-         * Extra protection:
-         * never select an ended event.
-         */
         if (
           statusOf(
             e,
@@ -548,10 +525,6 @@ function Home() {
   const pickFromList = (
     e: KEvent,
   ) => {
-    /*
-     * Ended events live only inside the ended list.
-     * Do not send the user back to the map for them.
-     */
     if (
       statusOf(
         e,
@@ -1028,7 +1001,13 @@ function Home() {
           MAIN WORKSPACE
           ===================================================== */}
 
-      <main className="relative flex min-h-0 flex-1 flex-col overflow-hidden [touch-action:pan-y]">
+      <main
+        className={`relative flex min-h-0 flex-1 flex-col [touch-action:pan-y] ${
+          view === "map"
+            ? "overflow-y-auto overflow-x-hidden lg:overflow-hidden"
+            : "overflow-hidden"
+        }`}
+      >
         {/* MOBILE / TABLET CONTROLS */}
 
         <div className="shrink-0 border-b border-border bg-card px-2 py-2 lg:hidden">
@@ -1124,15 +1103,33 @@ function Home() {
             WORKSPACE
             =================================================== */}
 
-        <div className="mx-auto flex min-h-0 w-full max-w-[1800px] flex-1 px-1.5 py-1.5 sm:px-2 sm:py-2 md:px-3 lg:px-4">
-          <div className="relative flex min-h-0 w-full flex-1 gap-2 sm:gap-3 lg:h-[calc(100dvh-260px)] lg:min-h-[520px] lg:gap-4">
+        <div
+          className={`mx-auto w-full max-w-[1800px] px-1.5 sm:px-2 md:px-3 lg:px-4 ${
+            view === "map"
+              ? "flex-none py-1.5 sm:py-2"
+              : "flex min-h-0 flex-1 py-1.5 sm:py-2"
+          }`}
+        >
+          <div
+            className={`relative w-full gap-2 sm:gap-3 lg:gap-4 ${
+              view === "map"
+                ? "flex min-h-[calc(100dvh-80px)] flex-none"
+                : "flex min-h-0 flex-1"
+            } lg:h-[calc(100dvh-260px)] lg:min-h-[520px]`}
+          >
 
             {/* =================================================
                 MAP PANEL
                 ================================================= */}
 
             {showMap && (
-              <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden rounded-xl border border-border bg-muted shadow-sm [touch-action:auto] sm:rounded-2xl lg:min-h-0">
+              <div
+                className={`relative min-w-0 flex-1 overflow-hidden rounded-xl border border-border bg-muted shadow-sm [touch-action:auto] sm:rounded-2xl lg:min-h-0 ${
+                  view === "map"
+                    ? "min-h-[calc(100dvh-80px)]"
+                    : "min-h-0"
+                }`}
+              >
                 <ClientOnly
                   fallback={
                     <div className="flex h-full items-center justify-center bg-muted text-sm text-muted-foreground">
@@ -1149,9 +1146,6 @@ function Home() {
                   >
                     <EventMap
                       key="event-map"
-                      /*
-                       * ONLY active events reach the map.
-                       */
                       events={mapEvents}
                       selectedId={
                         selectedId
@@ -1268,17 +1262,13 @@ function Home() {
                             size={14}
                             aria-hidden="true"
                           />
-
-                          Post an
-                          Event
+                          Post an Event
                         </Link>
                       </div>
                     </div>
                   )}
 
-                {/* =================================================
-                    DESKTOP EVENT PREVIEW
-                    ================================================= */}
+                {/* DESKTOP EVENT PREVIEW */}
 
                 {selected &&
                   view === "map" && (
@@ -1302,23 +1292,10 @@ function Home() {
                 DESKTOP EVENT PANEL
                 ================================================= */}
 
-            {/*
-              FIX: this panel is desktop-only, full stop. It must
-              never depend on `view`. The previous version switched
-              this to plain "flex" (full width, shrink-0) whenever
-              `view === "list"` — which is exactly the moment a
-              mobile user taps the List tab. That put this panel on
-              screen *alongside* the real mobile list panel below in
-              the same flex row, and since this one refuses to
-              shrink (`shrink-0`, `w-full`), it starved the real
-              mobile list of layout space and broke its scrolling.
-            */}
             <aside
               aria-label="Event list"
               className="hidden min-h-0 w-full shrink-0 flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm sm:rounded-2xl lg:flex lg:w-[360px] xl:w-[400px] 2xl:w-[420px]"
             >
-              {/* CONTROLS */}
-
               <div className="shrink-0 border-b border-border bg-card">
                 <div className="flex items-center justify-between gap-2 px-2.5 py-2 sm:px-3">
                   <div className="min-w-0">
@@ -1346,8 +1323,6 @@ function Home() {
                   </div>
 
                   <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
-                    {/* ENDED EVENTS BUTTON */}
-
                     <button
                       type="button"
                       aria-pressed={
@@ -1484,21 +1459,16 @@ function Home() {
                 </div>
               </div>
 
-              {/* EVENT LIST */}
-
               <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
                 {q.isLoading && (
                   <p className="p-4 text-sm text-muted-foreground">
-                    Loading
-                    events…
+                    Loading events…
                   </p>
                 )}
 
                 {q.isError && (
                   <p className="p-4 text-sm text-muted-foreground">
-                    Events are
-                    unavailable
-                    right now.
+                    Events are unavailable right now.
                   </p>
                 )}
 
@@ -1545,8 +1515,7 @@ function Home() {
                             }
                             className="mt-3 h-9 rounded-md border border-border px-3 text-sm font-medium hover:bg-muted"
                           >
-                            Clear
-                            filters
+                            Clear filters
                           </button>
                         )}
                     </div>
@@ -1561,7 +1530,9 @@ function Home() {
                 ================================================= */}
 
             {view === "list" && (
-              <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm sm:rounded-2xl lg:hidden">
+              <div className="absolute inset-0 z-10 flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm sm:rounded-2xl lg:hidden">
+                {/* MOBILE LIST HEADER */}
+
                 <div className="shrink-0 border-b border-border px-2.5 py-2 sm:px-3">
                   <div className="flex items-center justify-between gap-2">
                     <p
@@ -1579,8 +1550,6 @@ function Home() {
                             }`
                           : ""}
                     </p>
-
-                    {/* MOBILE ENDED BUTTON */}
 
                     <button
                       type="button"
@@ -1624,11 +1593,22 @@ function Home() {
                   </div>
                 </div>
 
-                {/* IMPORTANT:
-                    This is now the ONLY scrolling area
-                    on mobile/tablet. */}
+                {/* =================================================
+                    MOBILE SCROLL CONTAINER
 
-                <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+                    This is intentionally the ONLY element that
+                    handles vertical scrolling in the List view.
+                    ================================================= */}
+
+                <div
+                  className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain"
+                  style={{
+                    WebkitOverflowScrolling:
+                      "touch",
+                    touchAction:
+                      "pan-y",
+                  }}
+                >
                   {q.isLoading && (
                     <p className="p-6 text-center text-sm text-muted-foreground">
                       Loading events…
@@ -1699,6 +1679,14 @@ function Home() {
                     )}
 
                   {list}
+
+                  {/* Small bottom breathing room so the final
+                      event is never hidden against the viewport. */}
+
+                  <div
+                    aria-hidden="true"
+                    className="h-4"
+                  />
                 </div>
               </div>
             )}
@@ -1713,8 +1701,6 @@ function Home() {
       {selected &&
         view === "map" && (
           <>
-            {/* Backdrop — mobile/tablet only */}
-
             <div
               className="fixed inset-0 z-[900] bg-black/20 backdrop-blur-[1px] lg:hidden"
               onClick={() =>
@@ -1722,8 +1708,6 @@ function Home() {
               }
               aria-hidden="true"
             />
-
-            {/* Swipeable mobile/tablet preview only */}
 
             <div className="lg:hidden">
               <EventPreview

@@ -1,4 +1,5 @@
-import { Link } from "@tanstack/react-router";
+
+import { Link, useLocation } from "@tanstack/react-router";
 import {
   Compass,
   MapPin,
@@ -28,6 +29,11 @@ export function SiteHeader({
 
   const menuRef =
     useRef<HTMLDivElement>(null);
+
+  const location = useLocation();
+
+  const isSubmitPage =
+    location.pathname === "/submit";
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -93,21 +99,21 @@ export function SiteHeader({
           {/* =====================================================
               LOGO
              ===================================================== */}
+
           <Link
             to="/"
             aria-label="Kerala Events — home"
             onClick={() =>
               setMenuOpen(false)
             }
-            className={`
+            className="
               flex
               shrink-0
               items-center
               gap-2
               sm:gap-2.5
               lg:gap-3
-              ${!search ? "mx-auto md:mx-0" : ""}
-            `}
+            "
           >
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#edf7f3] text-[#075c48] sm:h-10 sm:w-10 lg:h-11 lg:w-11">
               <MapPin
@@ -123,82 +129,125 @@ export function SiteHeader({
           </Link>
 
           {/* =====================================================
-              MOBILE SEARCH
+              MOBILE HOME SEARCH
+              Only shown on the home page
              ===================================================== */}
-          {search && (
-            <div className="relative min-w-0 flex-1 md:hidden">
-              <Search
-                size={17}
-                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"
-                aria-hidden="true"
-              />
 
-              <input
-                type="search"
-                value={search.value}
-                onChange={(e) =>
-                  search.onChange(
-                    e.target.value,
-                  )
-                }
-                aria-label="Search events, places or venues"
-                placeholder="Search events, places..."
-                className="
-                  h-10
-                  w-full
-                  min-w-0
-                  rounded-full
-                  border
-                  border-slate-200
-                  bg-slate-50/70
-                  pl-9
-                  pr-9
-                  text-[13px]
-                  text-slate-800
-                  placeholder:text-slate-500
-                  shadow-sm
-                  outline-none
-                  transition
-                  focus:border-[#075c48]
-                  focus:bg-white
-                  focus:ring-2
-                  focus:ring-[#075c48]/10
-                  sm:h-11
-                  sm:text-[14px]
-                "
-              />
+          {!isSubmitPage &&
+            search && (
+              <div className="relative min-w-0 flex-1 md:hidden">
+                <Search
+                  size={17}
+                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"
+                  aria-hidden="true"
+                />
 
-              {search.value && (
-                <button
-                  type="button"
-                  onClick={() =>
-                    search.onChange("")
+                <input
+                  type="search"
+                  value={search.value}
+                  onChange={(e) =>
+                    search.onChange(
+                      e.target.value,
+                    )
                   }
-                  aria-label="Clear search"
+                  aria-label="Search events, places or venues"
+                  placeholder="Search events, places..."
                   className="
-                    absolute
-                    right-1
-                    top-1/2
-                    flex
-                    h-8
-                    w-8
-                    -translate-y-1/2
-                    items-center
-                    justify-center
+                    h-10
+                    w-full
+                    min-w-0
                     rounded-full
-                    text-slate-500
-                    hover:bg-slate-100
+                    border
+                    border-slate-200
+                    bg-slate-50/70
+                    pl-9
+                    pr-9
+                    text-[13px]
+                    text-slate-800
+                    placeholder:text-slate-500
+                    shadow-sm
+                    outline-none
+                    transition
+                    focus:border-[#075c48]
+                    focus:bg-white
+                    focus:ring-2
+                    focus:ring-[#075c48]/10
+                    sm:h-11
+                    sm:text-[14px]
                   "
-                >
-                  <X size={16} />
-                </button>
-              )}
-            </div>
+                />
+
+                {search.value && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      search.onChange("")
+                    }
+                    aria-label="Clear search"
+                    className="
+                      absolute
+                      right-1
+                      top-1/2
+                      flex
+                      h-8
+                      w-8
+                      -translate-y-1/2
+                      items-center
+                      justify-center
+                      rounded-full
+                      text-slate-500
+                      hover:bg-slate-100
+                    "
+                  >
+                    <X size={16} />
+                  </button>
+                )}
+              </div>
+            )}
+
+          {/* =====================================================
+              MOBILE SUBMIT PAGE EXPLORE
+              Search is replaced by Explore
+             ===================================================== */}
+
+          {isSubmitPage && (
+            <Link
+              to="/"
+              onClick={() =>
+                setMenuOpen(false)
+              }
+              className="
+                ml-auto
+                flex
+                shrink-0
+                items-center
+                gap-1.5
+                rounded-full
+                px-2.5
+                py-2
+                text-[13px]
+                font-semibold
+                text-[#064d3e]
+                hover:bg-slate-50
+                md:hidden
+                sm:px-3
+                sm:text-[14px]
+              "
+            >
+              <Compass
+                size={18}
+                className="sm:h-5 sm:w-5"
+              />
+
+              Explore
+            </Link>
           )}
 
           {/* =====================================================
               DESKTOP SEARCH
+              Hidden on submit page mobile, unchanged on desktop
              ===================================================== */}
+
           {search && (
             <div className="relative hidden min-w-0 flex-1 md:block md:max-w-[870px] lg:mx-5 xl:mx-8">
               <Search
@@ -270,20 +319,22 @@ export function SiteHeader({
           {/* =====================================================
               DESKTOP RIGHT SIDE
              ===================================================== */}
+
           <div
-            className={`
+            className="
               flex
               shrink-0
               items-center
               gap-2
               sm:gap-3
               lg:gap-4
-              ${search ? "ml-auto" : "absolute right-0 md:static md:ml-auto"}
-            `}
+              ml-auto
+            "
           >
             {/* ===================================================
                 DESKTOP EXPLORE
                =================================================== */}
+
             <Link
               to="/"
               onClick={() =>
@@ -309,8 +360,9 @@ export function SiteHeader({
             </Link>
 
             {/* ===================================================
-                POST EVENT
+                DESKTOP POST EVENT
                =================================================== */}
+
             <Link
               to="/submit"
               onClick={() =>
@@ -363,6 +415,7 @@ export function SiteHeader({
             {/* ===================================================
                 MENU
                =================================================== */}
+
             <div
               ref={menuRef}
               className="relative shrink-0"
@@ -419,6 +472,7 @@ export function SiteHeader({
               {/* =================================================
                   MOBILE DROPDOWN
                  ================================================= */}
+
               {menuOpen && (
                 <>
                   <div
@@ -457,37 +511,43 @@ export function SiteHeader({
                       md:hidden
                     "
                   >
-                    <Link
-                      to="/"
-                      role="menuitem"
-                      onClick={() =>
-                        setMenuOpen(false)
-                      }
-                      className="
-                        flex
-                        items-center
-                        gap-3
-                        rounded-lg
-                        px-3
-                        py-3.5
-                        text-sm
-                        font-medium
-                        text-slate-700
-                        transition
-                        hover:bg-slate-100
-                        active:bg-slate-200
-                      "
-                    >
-                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#edf7f3] text-[#075c48]">
-                        <Compass
-                          size={19}
-                        />
-                      </span>
+                    {/* POST EVENT — HOME PAGE ONLY */}
 
-                      <span>
-                        Explore events
-                      </span>
-                    </Link>
+                    {!isSubmitPage && (
+                      <Link
+                        to="/submit"
+                        role="menuitem"
+                        onClick={() =>
+                          setMenuOpen(false)
+                        }
+                        className="
+                          flex
+                          items-center
+                          gap-3
+                          rounded-lg
+                          px-3
+                          py-3.5
+                          text-sm
+                          font-medium
+                          text-slate-700
+                          transition
+                          hover:bg-slate-100
+                          active:bg-slate-200
+                        "
+                      >
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#edf7f3] text-[#075c48]">
+                          <Plus
+                            size={19}
+                          />
+                        </span>
+
+                        <span>
+                          Post an Event
+                        </span>
+                      </Link>
+                    )}
+
+                    {/* BUY ME A COFFEE */}
 
                     <div
                       role="menuitem"
@@ -521,6 +581,7 @@ export function SiteHeader({
                   {/* =================================================
                       DESKTOP DROPDOWN
                      ================================================= */}
+
                   <div
                     role="menu"
                     className="
