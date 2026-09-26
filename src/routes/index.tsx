@@ -1302,13 +1302,20 @@ function Home() {
                 DESKTOP EVENT PANEL
                 ================================================= */}
 
+            {/*
+              FIX: this panel is desktop-only, full stop. It must
+              never depend on `view`. The previous version switched
+              this to plain "flex" (full width, shrink-0) whenever
+              `view === "list"` — which is exactly the moment a
+              mobile user taps the List tab. That put this panel on
+              screen *alongside* the real mobile list panel below in
+              the same flex row, and since this one refuses to
+              shrink (`shrink-0`, `w-full`), it starved the real
+              mobile list of layout space and broke its scrolling.
+            */}
             <aside
               aria-label="Event list"
-              className={`flex min-h-0 w-full shrink-0 flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm sm:rounded-2xl lg:w-[360px] xl:w-[400px] 2xl:w-[420px] ${
-                view === "map"
-                  ? "hidden lg:flex"
-                  : "flex"
-              }`}
+              className="hidden min-h-0 w-full shrink-0 flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm sm:rounded-2xl lg:flex lg:w-[360px] xl:w-[400px] 2xl:w-[420px]"
             >
               {/* CONTROLS */}
 

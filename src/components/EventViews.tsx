@@ -459,6 +459,19 @@ function DesktopEventPreview({
 
 /* ============================================================
    MOBILE / TABLET EVENT PREVIEW
+   ============================================================
+
+   This sheet is ALWAYS rendered at a constant height
+   (calc(100dvh - 8px)) and never animates the CSS `height`
+   property. Collapsed vs. expanded is represented purely by
+   `transform: translateY()`, which the browser can animate on
+   the compositor thread — smooth on any phone, unlike `height`
+   transitions which force a full layout pass every frame.
+
+   During a drag, the transform is written directly to the DOM
+   node via a ref (bypassing React state) so the sheet tracks
+   the finger 1:1 with zero lag. On release, a short CSS
+   transition eases the transform to whichever snap point wins.
    ============================================================ */
 
 function MobileEventPreview({
@@ -468,15 +481,13 @@ function MobileEventPreview({
   e: KEvent;
   onClose: () => void;
 }) {
+  const PEEK_HEIGHT = 260; // px visible when collapsed
+  const FULL_HEIGHT = "calc(100dvh - 8px)";
+  const SNAP_TRANSITION =
+    "transform 280ms cubic-bezier(0.22, 1, 0.36, 1)";
+
   const [expanded, setExpanded] =
     useState(false);
-
-  /*
-   * Actual compact height of the
-   * naturally-sized card.
-   */
-  const [collapsedHeight, setCollapsedHeight] =
-    useState<number | null>(null);
 
   const [dragging, setDragging] =
     useState(false);
@@ -484,34 +495,78 @@ function MobileEventPreview({
   const sheetRef =
     useRef<HTMLElement | null>(null);
 
+  /*
+   * Full rendered height of the sheet, measured once
+   * per event / resize. Used to compute how far down
+   * the sheet must translate to only show PEEK_HEIGHT.
+   */
+  const sheetHeightRef =
+    useRef(0);
+
+  /*
+   * The translateY currently applied to the sheet,
+   * kept outside React state so drag updates never
+   * trigger a re-render.
+   */
+  const currentOffsetRef =
+    useRef(0);
+
   const startY =
     useRef<number | null>(null);
 
-  const startExpanded =
-    useRef(false);
+  const startOffsetRef =
+    useRef(0);
 
   const activePointer =
-    useRef<number | null>(null);
-
-  const collapsedHeightRef =
     useRef<number | null>(null);
 
   const m =
     CATEGORY_META[e.category];
 
-  /*
-   * Keep the ref synchronized with
-   * the state.
-   */
-  useEffect(() => {
-    collapsedHeightRef.current =
-      collapsedHeight;
-  }, [collapsedHeight]);
+  const maxOffset = () =>
+    Math.max(
+      sheetHeightRef.current -
+        PEEK_HEIGHT,
+      0,
+    );
+
+  const restingOffset = (
+    isExpanded: boolean,
+  ) =>
+    isExpanded
+      ? 0
+      : maxOffset();
 
   /*
-   * Measure the natural compact
-   * height whenever the selected
-   * event changes.
+   * Write a transform directly to the sheet's DOM node.
+   * `animate=false` is used during live drag tracking;
+   * `animate=true` is used for the release "snap".
+   */
+  const applyTransform = (
+    offset: number,
+    animate: boolean,
+  ) => {
+    const el =
+      sheetRef.current;
+
+    if (!el) {
+      return;
+    }
+
+    el.style.transition =
+      animate
+        ? SNAP_TRANSITION
+        : "none";
+
+    el.style.transform = `translateY(${offset}px)`;
+
+    currentOffsetRef.current =
+      offset;
+  };
+
+  /*
+   * Measure the sheet and reset to collapsed whenever
+   * the selected event changes.
    */
   useEffect(() => {
     setExpanded(false);
@@ -520,72 +575,64 @@ function MobileEventPreview({
     startY.current = null;
     activePointer.current = null;
 
-    /*
-     * Wait until the collapsed
-     * version has rendered.
-     */
     requestAnimationFrame(() => {
-      const element =
+      const el =
         sheetRef.current;
 
-      if (!element) {
+      if (!el) {
         return;
       }
 
-      const height =
-        element.scrollHeight;
+      sheetHeightRef.current =
+        el.getBoundingClientRect().height;
 
-      if (height > 0) {
-        setCollapsedHeight(
-          height,
-        );
-      }
+      applyTransform(
+        restingOffset(false),
+        false,
+      );
     });
   }, [e.id]);
 
   /*
-   * Re-measure the compact card
-   * when viewport dimensions change.
+   * Re-measure on viewport resize (keyboard opening,
+   * orientation change, etc.) and re-snap to whichever
+   * state we're currently in.
    */
   useEffect(() => {
-    const measure = () => {
-      if (expanded) {
-        return;
-      }
-
-      const element =
+    const onResize = () => {
+      const el =
         sheetRef.current;
 
-      if (!element) {
+      if (!el || dragging) {
         return;
       }
 
-      const height =
-        element.scrollHeight;
+      sheetHeightRef.current =
+        el.getBoundingClientRect().height;
 
-      if (height > 0) {
-        setCollapsedHeight(
-          height,
-        );
-      }
+      applyTransform(
+        restingOffset(expanded),
+        false,
+      );
     };
 
     window.addEventListener(
       "resize",
-      measure,
+      onResize,
     );
 
     return () => {
       window.removeEventListener(
         "resize",
-        measure,
+        onResize,
       );
     };
-  }, [expanded]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expanded, dragging]);
 
   /*
-   * Lock page scrolling only while
-   * the swipe gesture is active.
+   * Lock page scrolling only while the swipe gesture
+   * is active.
    */
   useEffect(() => {
     if (!dragging) {
@@ -631,8 +678,8 @@ function MobileEventPreview({
     startY.current =
       event.clientY;
 
-    startExpanded.current =
-      expanded;
+    startOffsetRef.current =
+      currentOffsetRef.current;
 
     activePointer.current =
       event.pointerId;
@@ -645,18 +692,14 @@ function MobileEventPreview({
   };
 
   /*
-   * We intentionally DO NOT move the
-   * sheet while the finger moves.
-   *
-   * This makes the interaction feel
-   * like a proper bottom sheet instead
-   * of a card being physically dragged.
+   * Live-follow the finger. This writes straight to the
+   * DOM (no setState), so it's as smooth as the browser's
+   * own compositor can render.
    */
   const moveDrag = (
     event: React.PointerEvent<HTMLDivElement>,
   ) => {
     if (
-      !dragging ||
       startY.current === null ||
       activePointer.current !==
         event.pointerId
@@ -669,11 +712,32 @@ function MobileEventPreview({
      * interfering with the gesture.
      */
     event.preventDefault();
+
+    const delta =
+      event.clientY -
+      startY.current;
+
+    const clamped =
+      Math.min(
+        Math.max(
+          startOffsetRef.current +
+            delta,
+          0,
+        ),
+        maxOffset(),
+      );
+
+    applyTransform(
+      clamped,
+      false,
+    );
   };
 
   /*
-   * Finish the swipe and snap to the
-   * next state.
+   * Finish the swipe: decide which snap point wins
+   * based on how far past the threshold the sheet
+   * moved, then animate the transform the rest of
+   * the way there.
    */
   const finishDrag = (
     event: React.PointerEvent<HTMLDivElement>,
@@ -689,26 +753,16 @@ function MobileEventPreview({
       event.clientY -
       startY.current;
 
-    const threshold = 55;
+    const threshold =
+      maxOffset() * 0.25 ||
+      55;
 
     const wasExpanded =
-      startExpanded.current;
+      startOffsetRef.current ===
+      0;
 
-    setDragging(false);
-
-    startY.current = null;
-    activePointer.current = null;
-
-    /*
-     * Swipe UP from collapsed.
-     */
-    if (
-      !wasExpanded &&
-      delta < -threshold
-    ) {
-      setExpanded(true);
-      return;
-    }
+    let nextExpanded =
+      wasExpanded;
 
     /*
      * Swipe DOWN from expanded.
@@ -717,8 +771,32 @@ function MobileEventPreview({
       wasExpanded &&
       delta > threshold
     ) {
-      setExpanded(false);
+      nextExpanded = false;
     }
+
+    /*
+     * Swipe UP from collapsed.
+     */
+    if (
+      !wasExpanded &&
+      delta < -threshold
+    ) {
+      nextExpanded = true;
+    }
+
+    setDragging(false);
+
+    startY.current = null;
+    activePointer.current = null;
+
+    setExpanded(nextExpanded);
+
+    applyTransform(
+      restingOffset(
+        nextExpanded,
+      ),
+      true,
+    );
   };
 
   const cancelDrag = () => {
@@ -726,27 +804,23 @@ function MobileEventPreview({
 
     startY.current = null;
     activePointer.current = null;
+
+    applyTransform(
+      restingOffset(expanded),
+      true,
+    );
   };
 
-  /*
-   * If the compact height hasn't
-   * been measured yet, let the browser
-   * naturally size the first render.
-   *
-   * After that we animate between:
-   *
-   * compactHeight
-   *
-   * and
-   *
-   * viewportHeight
-   */
-  const targetHeight =
-    expanded
-      ? "calc(100dvh - 8px)"
-      : collapsedHeight
-        ? `${collapsedHeight}px`
-        : "auto";
+  const closeSheet = () => {
+    setExpanded(false);
+
+    applyTransform(
+      restingOffset(false),
+      true,
+    );
+
+    onClose();
+  };
 
   return (
     <>
@@ -758,9 +832,14 @@ function MobileEventPreview({
         <div
           className="fixed inset-0 z-[999] bg-black/15 backdrop-blur-[1px]"
           aria-hidden="true"
-          onClick={() =>
-            setExpanded(false)
-          }
+          onClick={() => {
+            setExpanded(false);
+
+            applyTransform(
+              restingOffset(false),
+              true,
+            );
+          }}
         />
       )}
 
@@ -773,21 +852,8 @@ function MobileEventPreview({
         aria-label={`Preview: ${e.title}`}
         className="fixed inset-x-0 bottom-0 z-[1000] flex flex-col overflow-hidden rounded-t-2xl border border-border bg-card shadow-2xl"
         style={{
-          height: targetHeight,
-          maxHeight:
-            "calc(100dvh - 8px)",
-
-          /*
-           * No translate transform.
-           *
-           * The sheet itself smoothly
-           * expands/collapses.
-           */
-          transition: dragging
-            ? "none"
-            : "height 360ms cubic-bezier(0.22, 1, 0.36, 1)",
-
-          willChange: "height",
+          height: FULL_HEIGHT,
+          willChange: "transform",
         }}
       >
         {/* ====================================================
@@ -841,7 +907,7 @@ function MobileEventPreview({
                    */
                   event.stopPropagation();
                 }}
-                onClick={onClose}
+                onClick={closeSheet}
                 aria-label="Close preview"
                 className="-m-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full hover:bg-muted"
               >
@@ -863,11 +929,7 @@ function MobileEventPreview({
             ==================================================== */}
 
         <div
-          className={`min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-3 ${
-            expanded
-              ? "touch-pan-y"
-              : "overflow-hidden"
-          }`}
+          className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-3 touch-pan-y"
           style={{
             WebkitOverflowScrolling:
               "touch",
