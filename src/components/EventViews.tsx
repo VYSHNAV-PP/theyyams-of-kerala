@@ -1,26 +1,61 @@
 import { Link } from "@tanstack/react-router";
 import {
+  ArrowRight,
+  Bookmark,
   CalendarDays,
+  Check,
+  Clock,
+  Flower2,
+  Landmark,
   MapPin,
+  Shield,
+  Sun,
+  Swords,
   ThumbsUp,
-  Ticket,
   X,
 } from "lucide-react";
-import {
-  useEffect,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
-
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   CATEGORY_META,
-  STATUS_LABEL,
-  entryLabel,
+  CONFIRMED_MIN,
+  PHASE_META,
+  formByName,
   fmtWhen,
-  statusOf,
+  phaseOf,
+  whenShort,
+  type Category,
   type KEvent,
+  type Phase,
 } from "@/lib/events";
+import { toggleSaved, useSaved } from "@/lib/saved";
+
+/* ============================================================
+   FAMILY ICON
+   ============================================================ */
+
+export function CategoryIcon({
+  category,
+  size = 14,
+  className,
+}: {
+  category: Category;
+  size?: number;
+  className?: string;
+}) {
+  const props = { size, "aria-hidden": true as const, ...(className ? { className } : {}) };
+  switch (CATEGORY_META[category].icon) {
+    case "flower":
+      return <Flower2 {...props} />;
+    case "sun":
+      return <Sun {...props} />;
+    case "swords":
+      return <Swords {...props} />;
+    case "shield":
+      return <Shield {...props} />;
+    default:
+      return <Landmark {...props} />;
+  }
+}
 
 /* ============================================================
    CHIP
@@ -37,65 +72,26 @@ export function Chip({
   children: ReactNode;
   tone?: string;
 }) {
-  const getTint = (hex: string) => {
-    const value = hex.replace("#", "");
-
-    if (value.length !== 6) {
-      return undefined;
-    }
-
-    const r = parseInt(
-      value.slice(0, 2),
-      16,
-    );
-    const g = parseInt(
-      value.slice(2, 4),
-      16,
-    );
-    const b = parseInt(
-      value.slice(4, 6),
-      16,
-    );
-
-    return `rgba(${r}, ${g}, ${b}, 0.10)`;
-  };
-
-  const inactiveStyle = tone
-    ? {
-        backgroundColor:
-          getTint(tone),
-        borderColor: `${tone}45`,
-        color: tone,
-      }
+  const style = tone
+    ? active
+      ? { backgroundColor: tone, borderColor: tone, color: "#0b0f13" }
+      : { borderColor: `${tone}66`, color: tone }
     : undefined;
-
-  const activeStyle =
-    active && tone
-      ? {
-          background: tone,
-          borderColor: tone,
-          color: "#ffffff",
-        }
-      : undefined;
 
   return (
     <button
       type="button"
       aria-pressed={!!active}
       onClick={onClick}
-      style={
-        active
-          ? activeStyle
-          : inactiveStyle
-      }
-      className={`inline-flex h-10 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-4 text-[13px] font-semibold transition-all focus-visible:outline-2 focus-visible:outline-ring ${
-        active
-          ? tone
-            ? "shadow-sm"
-            : "border-[#075c48] bg-[#075c48] text-white shadow-sm"
-          : tone
-            ? "hover:brightness-95"
-            : "border-[#dfe6e2] bg-white text-[#425b52] hover:border-[#b9cbc3] hover:bg-[#f7faf8]"
+      style={style}
+      className={`tap inline-flex h-10 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border px-3.5 text-[13px] font-semibold ${
+        tone
+          ? active
+            ? ""
+            : "bg-card hover:bg-accent"
+          : active
+            ? "border-primary bg-primary text-primary-foreground"
+            : "border-border bg-card text-foreground hover:border-gold-line hover:bg-accent"
       }`}
     >
       {children}
@@ -104,88 +100,59 @@ export function Chip({
 }
 
 /* ============================================================
-   CATEGORY BADGE
+   BADGES
    ============================================================ */
 
-export function CategoryBadge({
-  e,
-}: {
-  e: Pick<
-    KEvent,
-    "category" | "subcategory"
-  >;
-}) {
-  const m =
-    CATEGORY_META[e.category];
-
+export function CategoryBadge({ e }: { e: Pick<KEvent, "category" | "subcategory"> }) {
+  const m = CATEGORY_META[e.category];
   return (
     <span
-      className="inline-flex max-w-full items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold"
-      style={{
-        borderColor: `${m.hex}55`,
-        color: m.hex,
-        backgroundColor: `${m.hex}0d`,
-      }}
+      className="inline-flex max-w-full items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-semibold"
+      style={{ borderColor: `${m.hex}66`, color: m.hex }}
     >
-      <span aria-hidden="true">
-        {m.icon}
-      </span>
-
+      <CategoryIcon category={e.category} size={12} />
       <span className="truncate">
-        {e.category} ·{" "}
-        {e.subcategory}
+        {e.subcategory && e.subcategory !== e.category
+          ? `${e.category}, ${e.subcategory}`
+          : e.category}
       </span>
     </span>
   );
 }
 
-/* ============================================================
-   STATUS BADGE
-   ============================================================ */
-
-export function StatusBadge({
-  e,
-}: {
-  e: KEvent;
-}) {
-  const s = statusOf(e);
-
-  const cls =
-    s === "now"
-      ? "bg-primary text-primary-foreground"
-      : s === "ended"
-        ? "border border-border bg-background text-muted-foreground"
-        : "bg-muted text-foreground";
-
+export function PhaseBadge({ phase }: { phase: Phase }) {
+  const m = PHASE_META[phase];
   return (
     <span
-      className={`inline-flex shrink-0 items-center rounded-full px-2.5 py-1 text-[10px] font-semibold ${cls}`}
+      className="inline-flex shrink-0 items-center gap-1.5 text-[11px] font-semibold"
+      style={{ color: m.hex }}
     >
-      {s === "now" && (
-        <span
-          aria-hidden="true"
-          className="mr-1"
-        >
-          ●
-        </span>
-      )}
+      <span
+        aria-hidden="true"
+        className={`h-2 w-2 rounded-full ${phase === "now" ? "ke-live-dot" : ""}`}
+        style={{ backgroundColor: m.hex }}
+      />
+      {m.label}
+    </span>
+  );
+}
 
-      {STATUS_LABEL[s]}
+export function StatusBadge({ e }: { e: KEvent }) {
+  return <PhaseBadge phase={phaseOf(e)} />;
+}
+
+export function VerifiedBadge({ e }: { e: Pick<KEvent, "upvotes"> }) {
+  if (e.upvotes < CONFIRMED_MIN) return null;
+  return (
+    <span className="inline-flex shrink-0 items-center gap-1 text-[11px] font-semibold text-gold">
+      <Check size={12} aria-hidden="true" />
+      Verified
     </span>
   );
 }
 
 /* ============================================================
-   CONFIRMATION TEXT
-   ============================================================ */
-
-export const confirmText = (
-  n: number,
-) =>
-  `${n} ${n === 1 ? "person" : "people"} confirmed this event`;
-
-/* ============================================================
-   EVENT IMAGE
+   IMAGES
    ============================================================ */
 
 export function EventImage({
@@ -199,36 +166,19 @@ export function EventImage({
   className?: string;
   fallback: ReactNode;
 }) {
-  const candidates = Array.from(
-    new Set(
-      urls.filter(
-        (url): url is string =>
-          typeof url === "string" &&
-          url.trim().length > 0,
-      ),
-    ),
-  );
+  const candidates = Array.from(new Set(urls.filter((u) => typeof u === "string" && u.trim())));
+  const candidateKey = candidates.join("|");
 
-  const candidateKey =
-    candidates.join("|");
-
-  const [index, setIndex] =
-    useState(0);
-
-  const [failed, setFailed] =
-    useState(false);
+  const [index, setIndex] = useState(0);
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     setIndex(0);
     setFailed(false);
   }, [candidateKey]);
 
-  const currentUrl =
-    candidates[index];
-
-  if (!currentUrl || failed) {
-    return <>{fallback}</>;
-  }
+  const currentUrl = candidates[index];
+  if (!currentUrl || failed) return <>{fallback}</>;
 
   return (
     <img
@@ -237,72 +187,76 @@ export function EventImage({
       className={className}
       loading="lazy"
       onError={() => {
-        if (
-          index + 1 <
-          candidates.length
-        ) {
-          setIndex(
-            (current) =>
-              current + 1,
-          );
-        } else {
-          setFailed(true);
-        }
+        if (index + 1 < candidates.length) setIndex((c) => c + 1);
+        else setFailed(true);
       }}
     />
   );
 }
 
-/* ============================================================
-   EVENT THUMBNAIL
-   ============================================================ */
-
-function EventThumbnail({
-  e,
-  color,
-  icon,
-}: {
-  e: KEvent;
-  color: string;
-  icon: ReactNode;
-}) {
-  const candidates = Array.from(
-    new Set(
-      [
-        ...(e.imageCandidates ?? []),
-        ...(e.imageUrl
-          ? [e.imageUrl]
-          : []),
-      ].filter(
-        (url): url is string =>
-          typeof url === "string" &&
-          url.trim().length > 0,
-      ),
-    ),
+/** The emblem on a flat tile, used whenever a performance has no photo. */
+export function EmblemTile({ size = 34 }: { size?: number }) {
+  return (
+    <span className="flex h-full w-full items-center justify-center bg-raised">
+      <img
+        src="/logo-mark-96.png"
+        alt=""
+        width={size}
+        height={size}
+        style={{ width: size, height: size }}
+        className="object-contain"
+      />
+    </span>
   );
+}
 
+export function EventThumbnail({ e, size }: { e: KEvent; size?: number }) {
+  const urls = [...e.imageCandidates, ...(e.imageUrl ? [e.imageUrl] : [])];
   return (
     <EventImage
-      urls={candidates}
+      urls={urls}
       alt=""
       className="h-full w-full object-cover"
-      fallback={
-        <span
-          className="flex h-full w-full items-center justify-center"
-          style={{
-            color,
-            backgroundColor: `${color}12`,
-          }}
-        >
-          {icon}
-        </span>
-      }
+      fallback={<EmblemTile {...(size ? { size } : {})} />}
     />
   );
 }
 
 /* ============================================================
-   EVENT PREVIEW
+   BOOKMARK
+   ============================================================ */
+
+export function BookmarkButton({
+  id,
+  title,
+  className,
+}: {
+  id: string;
+  title: string;
+  className?: string;
+}) {
+  const saved = useSaved().has(id);
+  return (
+    <button
+      type="button"
+      aria-pressed={saved}
+      aria-label={saved ? `Remove ${title} from saved` : `Save ${title}`}
+      title={saved ? "Saved on this device" : "Save on this device"}
+      onClick={(ev) => {
+        ev.stopPropagation();
+        toggleSaved(id);
+      }}
+      className={`tap flex h-9 w-9 shrink-0 items-center justify-center rounded-md hover:bg-accent ${
+        saved ? "text-gold" : "text-subtle hover:text-foreground"
+      } ${className ?? ""}`}
+    >
+      <Bookmark size={18} fill={saved ? "currentColor" : "none"} aria-hidden="true" />
+    </button>
+  );
+}
+
+/* ============================================================
+   PREVIEW (map popup on desktop, bottom sheet on mobile)
    ============================================================ */
 
 export function EventPreview({
@@ -314,762 +268,298 @@ export function EventPreview({
   onClose: () => void;
   mobile?: boolean;
 }) {
-  /*
-   * Desktop and mobile are deliberately
-   * kept as separate components.
-   */
-  if (!mobile) {
-    return (
-      <DesktopEventPreview
-        e={e}
-        onClose={onClose}
-      />
-    );
-  }
-
-  return (
-    <MobileEventPreview
-      e={e}
-      onClose={onClose}
-    />
+  // Desktop and mobile are deliberately separate components.
+  return mobile ? (
+    <MobileEventPreview e={e} onClose={onClose} />
+  ) : (
+    <DesktopEventPreview e={e} onClose={onClose} />
   );
 }
 
-/* ============================================================
-   DESKTOP EVENT PREVIEW
-   ============================================================ */
+function PreviewFacts({ e }: { e: KEvent }) {
+  return (
+    <ul className="space-y-2 text-sm">
+      <li className="flex gap-2.5">
+        <MapPin size={16} className="mt-0.5 shrink-0 text-gold" aria-hidden="true" />
+        <span>
+          {e.venue}, {e.locality}, {e.district}
+        </span>
+      </li>
+      <li className="flex gap-2.5">
+        <CalendarDays size={16} className="mt-0.5 shrink-0 text-gold" aria-hidden="true" />
+        <span>{fmtWhen(e)}</span>
+      </li>
+    </ul>
+  );
+}
 
-function DesktopEventPreview({
-  e,
-  onClose,
-}: {
-  e: KEvent;
-  onClose: () => void;
-}) {
+function DesktopEventPreview({ e, onClose }: { e: KEvent; onClose: () => void }) {
+  const phase = phaseOf(e);
+  const form = formByName(e.subcategory);
   return (
     <section
       aria-label={`Preview: ${e.title}`}
-      className="relative flex max-h-[55dvh] flex-col overflow-y-auto rounded-2xl border border-border bg-card shadow-2xl lg:mx-auto lg:max-w-2xl"
+      className="relative flex max-h-[60dvh] flex-col overflow-hidden rounded-lg border border-gold-line bg-popover shadow-2xl"
     >
-      {/* HEADER */}
+      <button
+        type="button"
+        onClick={onClose}
+        aria-label="Close preview"
+        className="tap absolute right-2 top-2 z-10 flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+      >
+        <X size={17} aria-hidden="true" />
+      </button>
 
-      <div className="shrink-0 px-5 pb-3 pt-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-            <CategoryBadge e={e} />
-
-            <StatusBadge e={e} />
-          </div>
-
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close preview"
-            className="-m-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full hover:bg-muted"
-          >
-            <X
-              size={18}
-              aria-hidden="true"
-            />
-          </button>
+      <div className="ke-scroll flex min-h-0 gap-3.5 overflow-y-auto p-3.5 pr-10">
+        <span className="block h-20 w-20 shrink-0 overflow-hidden rounded-md border border-gold-line">
+          <EventThumbnail e={e} />
+        </span>
+        <div className="min-w-0">
+          <PhaseBadge phase={phase} />
+          <h2 className="mt-0.5 font-display text-[17px] font-semibold leading-snug">{e.title}</h2>
+          {form && <p className="font-ml text-[13px] text-gold">{form.ml}</p>}
         </div>
-
-        <h2 className="mt-3 text-xl font-bold leading-snug">
-          {e.title}
-        </h2>
       </div>
 
-      {/* CONTENT */}
-
-      <div className="min-h-0 flex-1 px-5 pb-4">
-        <ul className="space-y-2.5 text-sm">
-          <li className="flex gap-2.5">
-            <MapPin
-              size={17}
-              className="mt-0.5 shrink-0"
-              aria-hidden="true"
-            />
-
-            <span>
-              {e.venue},{" "}
-              {e.locality},{" "}
-              {e.district}
-            </span>
-          </li>
-
-          <li className="flex gap-2.5">
-            <CalendarDays
-              size={17}
-              className="mt-0.5 shrink-0"
-              aria-hidden="true"
-            />
-
-            <span>
-              {fmtWhen(e)}
-            </span>
-          </li>
-
-          <li className="flex gap-2.5">
-            <Ticket
-              size={17}
-              className="mt-0.5 shrink-0"
-              aria-hidden="true"
-            />
-
-            <span>
-              {entryLabel(e)}
-            </span>
-          </li>
-        </ul>
-
-        <p className="mt-4 text-sm leading-relaxed text-muted-foreground">
+      <div className="ke-scroll min-h-0 overflow-y-auto border-t border-border px-3.5 py-3">
+        <PreviewFacts e={e} />
+        <p className="mt-3 line-clamp-3 text-[13px] leading-relaxed text-muted-foreground">
           {e.description}
         </p>
       </div>
 
-      {/* FOOTER */}
-
-      <div className="shrink-0 border-t border-border bg-card px-5 py-4">
-        <div className="flex items-center justify-between gap-3">
-          <span className="flex min-w-0 items-center gap-1.5 text-sm">
-            <ThumbsUp
-              size={14}
-              aria-hidden="true"
-            />
-
-            <span className="truncate">
-              {confirmText(
-                e.upvotes,
-              )}
-            </span>
-          </span>
-
-          <Link
-            to="/event/$id"
-            params={{ id: e.id }}
-            className="flex h-10 shrink-0 items-center justify-center rounded-full bg-primary px-5 text-sm font-semibold text-primary-foreground hover:opacity-90"
-          >
-            View Event
-          </Link>
-        </div>
+      <div className="flex items-center justify-between gap-3 border-t border-border px-3.5 py-3">
+        <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+          <ThumbsUp size={13} aria-hidden="true" />
+          <span className="truncate">{e.upvotes} confirmed</span>
+        </span>
+        <Link
+          to="/event/$id"
+          params={{ id: e.id }}
+          className="tap inline-flex h-10 shrink-0 items-center gap-1.5 rounded-md border border-gold px-4 text-sm font-semibold text-gold hover:bg-gold hover:text-background"
+        >
+          View performance
+          <ArrowRight size={15} aria-hidden="true" />
+        </Link>
       </div>
     </section>
   );
 }
 
-/* ============================================================
-   MOBILE / TABLET EVENT PREVIEW
-   ============================================================
-
-   This sheet is ALWAYS rendered at a constant height
-   (calc(100dvh - 8px)) and never animates the CSS `height`
-   property. Collapsed vs. expanded is represented purely by
-   `transform: translateY()`, which the browser can animate on
-   the compositor thread — smooth on any phone, unlike `height`
-   transitions which force a full layout pass every frame.
-
-   During a drag, the transform is written directly to the DOM
-   node via a ref (bypassing React state) so the sheet tracks
-   the finger 1:1 with zero lag. On release, a short CSS
-   transition eases the transform to whichever snap point wins.
-   ============================================================ */
-
-function MobileEventPreview({
-  e,
-  onClose,
-}: {
-  e: KEvent;
-  onClose: () => void;
-}) {
-  const PEEK_HEIGHT = 260; // px visible when collapsed
+/**
+ * Mobile sheet. It is always rendered at a constant height and moves purely with
+ * `transform: translateY()`, which the browser animates on the compositor thread.
+ * During a drag the transform is written straight to the DOM node (no React state),
+ * so the sheet follows the finger with no lag; on release a short transition snaps it.
+ */
+function MobileEventPreview({ e, onClose }: { e: KEvent; onClose: () => void }) {
+  const PEEK_HEIGHT = 262;
   const FULL_HEIGHT = "calc(100dvh - 8px)";
-  const SNAP_TRANSITION =
-    "transform 280ms cubic-bezier(0.22, 1, 0.36, 1)";
+  const SNAP_TRANSITION = "transform 280ms cubic-bezier(0.22, 1, 0.36, 1)";
 
-  const [expanded, setExpanded] =
-    useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const [dragging, setDragging] = useState(false);
 
-  const [dragging, setDragging] =
-    useState(false);
+  const sheetRef = useRef<HTMLElement | null>(null);
+  const sheetHeightRef = useRef(0);
+  const currentOffsetRef = useRef(0);
+  const startY = useRef<number | null>(null);
+  const startOffsetRef = useRef(0);
+  const activePointer = useRef<number | null>(null);
 
-  const sheetRef =
-    useRef<HTMLElement | null>(null);
+  const phase = phaseOf(e);
+  const form = formByName(e.subcategory);
 
-  /*
-   * Full rendered height of the sheet, measured once
-   * per event / resize. Used to compute how far down
-   * the sheet must translate to only show PEEK_HEIGHT.
-   */
-  const sheetHeightRef =
-    useRef(0);
+  const maxOffset = () => Math.max(sheetHeightRef.current - PEEK_HEIGHT, 0);
+  const restingOffset = (isExpanded: boolean) => (isExpanded ? 0 : maxOffset());
 
-  /*
-   * The translateY currently applied to the sheet,
-   * kept outside React state so drag updates never
-   * trigger a re-render.
-   */
-  const currentOffsetRef =
-    useRef(0);
-
-  const startY =
-    useRef<number | null>(null);
-
-  const startOffsetRef =
-    useRef(0);
-
-  const activePointer =
-    useRef<number | null>(null);
-
-  const m =
-    CATEGORY_META[e.category];
-
-  const maxOffset = () =>
-    Math.max(
-      sheetHeightRef.current -
-        PEEK_HEIGHT,
-      0,
-    );
-
-  const restingOffset = (
-    isExpanded: boolean,
-  ) =>
-    isExpanded
-      ? 0
-      : maxOffset();
-
-  /*
-   * Write a transform directly to the sheet's DOM node.
-   * `animate=false` is used during live drag tracking;
-   * `animate=true` is used for the release "snap".
-   */
-  const applyTransform = (
-    offset: number,
-    animate: boolean,
-  ) => {
-    const el =
-      sheetRef.current;
-
-    if (!el) {
-      return;
-    }
-
-    el.style.transition =
-      animate
-        ? SNAP_TRANSITION
-        : "none";
-
+  const applyTransform = (offset: number, animate: boolean) => {
+    const el = sheetRef.current;
+    if (!el) return;
+    el.style.transition = animate ? SNAP_TRANSITION : "none";
     el.style.transform = `translateY(${offset}px)`;
-
-    currentOffsetRef.current =
-      offset;
+    currentOffsetRef.current = offset;
   };
 
-  /*
-   * Measure the sheet and reset to collapsed whenever
-   * the selected event changes.
-   */
+  // Measure and collapse whenever the selected performance changes.
   useEffect(() => {
     setExpanded(false);
     setDragging(false);
-
     startY.current = null;
     activePointer.current = null;
 
     requestAnimationFrame(() => {
-      const el =
-        sheetRef.current;
-
-      if (!el) {
-        return;
-      }
-
-      sheetHeightRef.current =
-        el.getBoundingClientRect().height;
-
-      applyTransform(
-        restingOffset(false),
-        false,
-      );
+      const el = sheetRef.current;
+      if (!el) return;
+      sheetHeightRef.current = el.getBoundingClientRect().height;
+      applyTransform(restingOffset(false), false);
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [e.id]);
 
-  /*
-   * Re-measure on viewport resize (keyboard opening,
-   * orientation change, etc.) and re-snap to whichever
-   * state we're currently in.
-   */
+  // Re-measure on resize (keyboard, rotation) and re-snap.
   useEffect(() => {
     const onResize = () => {
-      const el =
-        sheetRef.current;
-
-      if (!el || dragging) {
-        return;
-      }
-
-      sheetHeightRef.current =
-        el.getBoundingClientRect().height;
-
-      applyTransform(
-        restingOffset(expanded),
-        false,
-      );
+      const el = sheetRef.current;
+      if (!el || dragging) return;
+      sheetHeightRef.current = el.getBoundingClientRect().height;
+      applyTransform(restingOffset(expanded), false);
     };
-
-    window.addEventListener(
-      "resize",
-      onResize,
-    );
-
-    return () => {
-      window.removeEventListener(
-        "resize",
-        onResize,
-      );
-    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [expanded, dragging]);
 
-  /*
-   * Lock page scrolling only while the swipe gesture
-   * is active.
-   */
+  // Lock page scroll only while a swipe is active.
   useEffect(() => {
-    if (!dragging) {
-      return;
-    }
-
-    const previousOverflow =
-      document.body.style.overflow;
-
-    const previousTouchAction =
-      document.body.style.touchAction;
-
-    document.body.style.overflow =
-      "hidden";
-
-    document.body.style.touchAction =
-      "none";
-
+    if (!dragging) return;
+    const prevOverflow = document.body.style.overflow;
+    const prevTouch = document.body.style.touchAction;
+    document.body.style.overflow = "hidden";
+    document.body.style.touchAction = "none";
     return () => {
-      document.body.style.overflow =
-        previousOverflow;
-
-      document.body.style.touchAction =
-        previousTouchAction;
+      document.body.style.overflow = prevOverflow;
+      document.body.style.touchAction = prevTouch;
     };
   }, [dragging]);
 
-  /*
-   * Begin swipe gesture.
-   *
-   * This is attached to the handle +
-   * header, not the scrollable content.
-   */
-  const beginDrag = (
-    event: React.PointerEvent<HTMLDivElement>,
-  ) => {
-    if (
-      event.pointerType === "mouse"
-    ) {
-      return;
-    }
-
-    startY.current =
-      event.clientY;
-
-    startOffsetRef.current =
-      currentOffsetRef.current;
-
-    activePointer.current =
-      event.pointerId;
-
+  const beginDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === "mouse") return;
+    startY.current = event.clientY;
+    startOffsetRef.current = currentOffsetRef.current;
+    activePointer.current = event.pointerId;
     setDragging(true);
-
-    event.currentTarget.setPointerCapture(
-      event.pointerId,
-    );
+    event.currentTarget.setPointerCapture(event.pointerId);
   };
 
-  /*
-   * Live-follow the finger. This writes straight to the
-   * DOM (no setState), so it's as smooth as the browser's
-   * own compositor can render.
-   */
-  const moveDrag = (
-    event: React.PointerEvent<HTMLDivElement>,
-  ) => {
-    if (
-      startY.current === null ||
-      activePointer.current !==
-        event.pointerId
-    ) {
-      return;
-    }
-
-    /*
-     * Prevent browser gestures from
-     * interfering with the gesture.
-     */
+  const moveDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (startY.current === null || activePointer.current !== event.pointerId) return;
     event.preventDefault();
-
-    const delta =
-      event.clientY -
-      startY.current;
-
-    const clamped =
-      Math.min(
-        Math.max(
-          startOffsetRef.current +
-            delta,
-          0,
-        ),
-        maxOffset(),
-      );
-
-    applyTransform(
-      clamped,
-      false,
-    );
+    const delta = event.clientY - startY.current;
+    const clamped = Math.min(Math.max(startOffsetRef.current + delta, 0), maxOffset());
+    applyTransform(clamped, false);
   };
 
-  /*
-   * Finish the swipe: decide which snap point wins
-   * based on how far past the threshold the sheet
-   * moved, then animate the transform the rest of
-   * the way there.
-   */
-  const finishDrag = (
-    event: React.PointerEvent<HTMLDivElement>,
-  ) => {
-    if (
-      !dragging ||
-      startY.current === null
-    ) {
-      return;
-    }
+  const finishDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragging || startY.current === null) return;
 
-    const delta =
-      event.clientY -
-      startY.current;
+    const delta = event.clientY - startY.current;
+    const threshold = maxOffset() * 0.25 || 55;
+    const wasExpanded = startOffsetRef.current === 0;
+    let nextExpanded = wasExpanded;
 
-    const threshold =
-      maxOffset() * 0.25 ||
-      55;
-
-    const wasExpanded =
-      startOffsetRef.current ===
-      0;
-
-    let nextExpanded =
-      wasExpanded;
-
-    /*
-     * Swipe DOWN from expanded.
-     */
-    if (
-      wasExpanded &&
-      delta > threshold
-    ) {
-      nextExpanded = false;
-    }
-
-    /*
-     * Swipe UP from collapsed.
-     */
-    if (
-      !wasExpanded &&
-      delta < -threshold
-    ) {
-      nextExpanded = true;
-    }
+    if (wasExpanded && delta > threshold) nextExpanded = false;
+    if (!wasExpanded && delta < -threshold) nextExpanded = true;
 
     setDragging(false);
-
     startY.current = null;
     activePointer.current = null;
-
     setExpanded(nextExpanded);
-
-    applyTransform(
-      restingOffset(
-        nextExpanded,
-      ),
-      true,
-    );
+    applyTransform(restingOffset(nextExpanded), true);
   };
 
   const cancelDrag = () => {
     setDragging(false);
-
     startY.current = null;
     activePointer.current = null;
-
-    applyTransform(
-      restingOffset(expanded),
-      true,
-    );
+    applyTransform(restingOffset(expanded), true);
   };
 
   const closeSheet = () => {
     setExpanded(false);
-
-    applyTransform(
-      restingOffset(false),
-      true,
-    );
-
+    applyTransform(restingOffset(false), true);
     onClose();
   };
 
   return (
     <>
-      {/* ======================================================
-          EXPANDED BACKDROP
-          ====================================================== */}
-
       {expanded && (
         <div
-          className="fixed inset-0 z-[999] bg-black/15 backdrop-blur-[1px]"
+          className="fixed inset-0 z-[999] bg-black/50"
           aria-hidden="true"
           onClick={() => {
             setExpanded(false);
-
-            applyTransform(
-              restingOffset(false),
-              true,
-            );
+            applyTransform(restingOffset(false), true);
           }}
         />
       )}
 
-      {/* ======================================================
-          SHEET
-          ====================================================== */}
-
       <section
         ref={sheetRef}
         aria-label={`Preview: ${e.title}`}
-        className="fixed inset-x-0 bottom-0 z-[1000] flex flex-col overflow-hidden rounded-t-2xl border border-border bg-card shadow-2xl"
-        style={{
-          height: FULL_HEIGHT,
-          willChange: "transform",
-        }}
+        className="fixed inset-x-0 bottom-0 z-[1000] flex flex-col overflow-hidden rounded-t-xl border border-b-0 border-gold-line bg-popover shadow-2xl"
+        style={{ height: FULL_HEIGHT, willChange: "transform" }}
       >
-        {/* ====================================================
-            GESTURE HEADER
-            ==================================================== */}
-
         <div
           className="relative z-10 shrink-0"
-          style={{
-            touchAction: "none",
-          }}
-          onPointerDown={
-            beginDrag
-          }
-          onPointerMove={
-            moveDrag
-          }
-          onPointerUp={
-            finishDrag
-          }
-          onPointerCancel={
-            cancelDrag
-          }
+          style={{ touchAction: "none" }}
+          onPointerDown={beginDrag}
+          onPointerMove={moveDrag}
+          onPointerUp={finishDrag}
+          onPointerCancel={cancelDrag}
         >
-          {/* HANDLE */}
-
-          <div className="flex h-9 items-center justify-center">
-            <span
-              aria-hidden="true"
-              className="block h-1.5 w-12 rounded-full bg-muted-foreground/35"
-            />
+          <div className="flex h-8 items-center justify-center">
+            <span aria-hidden="true" className="block h-1 w-11 rounded-full bg-gold-line" />
           </div>
-
-          {/* HEADER */}
 
           <div className="px-4 pb-3">
             <div className="flex items-start justify-between gap-2">
-              <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-                <CategoryBadge e={e} />
-
-                <StatusBadge e={e} />
+              <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+                <PhaseBadge phase={phase} />
+                <VerifiedBadge e={e} />
               </div>
-
               <button
                 type="button"
-                onPointerDown={(event) => {
-                  /*
-                   * Prevent the close button
-                   * from starting the sheet
-                   * swipe gesture.
-                   */
-                  event.stopPropagation();
-                }}
+                onPointerDown={(event) => event.stopPropagation()}
                 onClick={closeSheet}
                 aria-label="Close preview"
-                className="-m-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full hover:bg-muted"
+                className="tap -m-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-md hover:bg-accent"
               >
-                <X
-                  size={18}
-                  aria-hidden="true"
-                />
+                <X size={18} aria-hidden="true" />
               </button>
             </div>
-
-            <h2 className="mt-2 text-lg font-bold leading-snug">
-              {e.title}
-            </h2>
+            <h2 className="mt-1 font-display text-lg font-semibold leading-snug">{e.title}</h2>
+            {form && <p className="font-ml text-sm text-gold">{form.ml}</p>}
           </div>
         </div>
 
-        {/* ====================================================
-            SCROLLABLE CONTENT
-            ==================================================== */}
+        <div className="shrink-0 border-y border-border bg-popover px-4 py-3">
+          <div className="flex items-center justify-between gap-3">
+            <span className="flex min-w-0 items-center gap-1.5 text-sm text-muted-foreground">
+              <ThumbsUp size={14} aria-hidden="true" />
+              <span className="truncate">{e.upvotes} confirmed</span>
+            </span>
+            <Link
+              to="/event/$id"
+              params={{ id: e.id }}
+              className="tap inline-flex h-11 shrink-0 items-center gap-1.5 rounded-md bg-primary px-5 text-sm font-semibold text-primary-foreground hover:opacity-90"
+            >
+              View performance
+              <ArrowRight size={15} aria-hidden="true" />
+            </Link>
+          </div>
+        </div>
 
-        <div
-          className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-3 touch-pan-y"
-          style={{
-            WebkitOverflowScrolling:
-              "touch",
-          }}
-        >
-          {/* IMAGE */}
-
+        <div className="ke-scroll min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-contain px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-3">
           {expanded && (
-            <div className="mb-4 h-44 overflow-hidden rounded-xl border border-border bg-muted">
-              <EventThumbnail
-                e={e}
-                color={m.hex}
-                icon={m.icon}
-              />
+            <div className="mb-4 h-44 overflow-hidden rounded-md border border-gold-line bg-raised">
+              <EventThumbnail e={e} size={64} />
             </div>
           )}
 
-          {/* EVENT DETAILS */}
-
-          <ul className="space-y-2 text-sm">
-            <li className="flex gap-2">
-              <MapPin
-                size={17}
-                className="mt-0.5 shrink-0"
-                aria-hidden="true"
-              />
-
-              <span>
-                {e.venue},{" "}
-                {e.locality},{" "}
-                {e.district}
-              </span>
-            </li>
-
-            <li className="flex gap-2">
-              <CalendarDays
-                size={17}
-                className="mt-0.5 shrink-0"
-                aria-hidden="true"
-              />
-
-              <span>
-                {fmtWhen(e)}
-              </span>
-            </li>
-
-            <li className="flex gap-2">
-              <Ticket
-                size={17}
-                className="mt-0.5 shrink-0"
-                aria-hidden="true"
-              />
-
-              <span>
-                {entryLabel(e)}
-              </span>
-            </li>
-          </ul>
-
-          {/* DESCRIPTION */}
+          <PreviewFacts e={e} />
 
           <p
-            className={`mt-3 text-sm leading-relaxed text-muted-foreground ${
-              expanded
-                ? ""
-                : "line-clamp-3"
-            }`}
+            className={`mt-3 text-sm leading-relaxed text-muted-foreground ${expanded ? "" : "line-clamp-3"}`}
           >
             {e.description}
           </p>
 
-          {/* EXTRA DETAILS */}
-
           {expanded && (
-            <div className="mt-5 space-y-3 pb-2">
-              <div className="rounded-xl border border-border bg-muted/40 p-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Location
-                </p>
-
-                <p className="mt-1 text-sm font-medium">
-                  {e.venue}
-                </p>
-
-                <p className="text-sm text-muted-foreground">
-                  {e.locality},{" "}
-                  {e.district}
-                </p>
-              </div>
-
-              <div className="rounded-xl border border-border bg-muted/40 p-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Date & time
-                </p>
-
-                <p className="mt-1 text-sm font-medium">
-                  {fmtWhen(e)}
-                </p>
-              </div>
-
-              <div className="rounded-xl border border-border bg-muted/40 p-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Entry
-                </p>
-
-                <p className="mt-1 text-sm font-medium">
-                  {entryLabel(e)}
-                </p>
-              </div>
+            <div className="mt-4">
+              <CategoryBadge e={e} />
             </div>
           )}
-        </div>
-
-        {/* ====================================================
-            FOOTER
-            ==================================================== */}
-
-        <div className="shrink-0 border-t border-border bg-card px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
-          <div className="flex items-center justify-between gap-3">
-            <span className="flex min-w-0 items-center gap-1 text-sm">
-              <ThumbsUp
-                size={14}
-                aria-hidden="true"
-              />
-
-              <span className="truncate">
-                {confirmText(
-                  e.upvotes,
-                )}
-              </span>
-            </span>
-
-            <Link
-              to="/event/$id"
-              params={{ id: e.id }}
-              className="flex h-10 shrink-0 items-center justify-center rounded-full bg-primary px-5 text-sm font-semibold text-primary-foreground hover:opacity-90"
-            >
-              View Event
-            </Link>
-          </div>
         </div>
       </section>
     </>
@@ -1077,80 +567,77 @@ function MobileEventPreview({
 }
 
 /* ============================================================
-   EVENT ROW
+   LIST ROW
    ============================================================ */
 
 export function EventRow({
   e,
   active,
+  now,
   onClick,
 }: {
   e: KEvent;
   active: boolean;
+  now: number;
   onClick: () => void;
 }) {
-  const m =
-    CATEGORY_META[e.category];
-
-  const s = statusOf(e);
+  const phase = phaseOf(e, now);
+  const meta = PHASE_META[phase];
+  const form = formByName(e.subcategory);
 
   return (
-    <li className="w-full px-2 py-1.5">
-      <button
-        type="button"
-        onClick={onClick}
-        aria-current={active}
-        className={`group flex w-full gap-3 rounded-2xl border p-3 text-left transition-all ${
+    <li className="w-full px-2.5 py-1">
+      <div
+        className={`relative rounded-md border transition-colors ${
           active
-            ? "border-[#b4cec2] bg-[#f0f7f3] shadow-sm"
-            : "border-transparent bg-white hover:border-[#e0e7e3] hover:bg-[#fafcfb] hover:shadow-sm"
+            ? "border-gold bg-accent"
+            : "border-border bg-card hover:border-gold-line hover:bg-raised"
         }`}
       >
-        <span
-          className="mt-0.5 flex h-[68px] w-[68px] shrink-0 items-center justify-center overflow-hidden rounded-xl border border-[#e1e7e3] bg-[#f1f5f2] text-2xl"
-          aria-hidden="true"
+        <button
+          type="button"
+          onClick={onClick}
+          aria-current={active}
+          className="flex w-full gap-3 rounded-md p-2.5 pr-12 text-left"
         >
-          <EventThumbnail
-            e={e}
-            color={m.hex}
-            icon={m.icon}
-          />
-        </span>
-
-        <span className="min-w-0 flex-1">
-          <span className="flex min-w-0 flex-wrap items-center gap-1.5">
-            <span className="truncate text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-              {e.category}
-
-              {e.subcategory
-                ? ` · ${e.subcategory}`
-                : ""}
-            </span>
-
-            <StatusBadge e={e} />
-          </span>
-
-          <span className="mt-1 block line-clamp-2 text-[14px] font-bold leading-snug text-foreground">
-            {e.title}
-          </span>
-
           <span
-            className={`mt-1 block text-xs font-semibold ${
-              s === "now"
-                ? "text-primary"
-                : "text-foreground"
-            }`}
+            className="block h-[72px] w-[72px] shrink-0 overflow-hidden rounded-md border border-gold-line"
+            aria-hidden="true"
           >
-            {fmtWhen(e)}
+            <EventThumbnail e={e} />
           </span>
 
-          <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
-            {e.locality},{" "}
-            {e.district} ·{" "}
-            {entryLabel(e)}
+          <span className="min-w-0 flex-1">
+            <span className="block truncate font-display text-[13.5px] font-semibold uppercase leading-snug tracking-wide">
+              {e.title}
+            </span>
+            {form && (
+              <span className="block truncate font-ml text-[12px] text-gold">{form.ml}</span>
+            )}
+            <span className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
+              <MapPin size={12} className="shrink-0" aria-hidden="true" />
+              <span className="truncate">
+                {e.locality}, {e.district}
+              </span>
+            </span>
+            <span className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Clock size={12} className="shrink-0" aria-hidden="true" />
+              <span className="truncate">{whenShort(e, now)}</span>
+            </span>
+            <span className="mt-1 flex items-center gap-3">
+              <span className="text-[11px] font-semibold" style={{ color: meta.hex }}>
+                {phase === "now" && (
+                  <span className="ke-live-dot mr-1.5 h-1.5 w-1.5 align-middle" />
+                )}
+                {phase === "tonight" ? "Performing tonight" : meta.label}
+              </span>
+              <VerifiedBadge e={e} />
+            </span>
           </span>
-        </span>
-      </button>
+        </button>
+
+        <BookmarkButton id={e.id} title={e.title} className="absolute right-1.5 top-1.5" />
+      </div>
     </li>
   );
 }

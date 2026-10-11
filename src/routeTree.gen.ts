@@ -10,7 +10,11 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as CalendarRouteImport } from './routes/calendar'
+import { Route as FormsRouteImport } from './routes/forms'
 import { Route as SubmitRouteImport } from './routes/submit'
+import { Route as TemplesRouteImport } from './routes/temples'
+import { Route as TodayRouteImport } from './routes/today'
 import { Route as EventIdRouteImport } from './routes/event.$id'
 
 const IndexRoute = IndexRouteImport.update({
@@ -18,9 +22,29 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CalendarRoute = CalendarRouteImport.update({
+  id: '/calendar',
+  path: '/calendar',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FormsRoute = FormsRouteImport.update({
+  id: '/forms',
+  path: '/forms',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SubmitRoute = SubmitRouteImport.update({
   id: '/submit',
   path: '/submit',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TemplesRoute = TemplesRouteImport.update({
+  id: '/temples',
+  path: '/temples',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TodayRoute = TodayRouteImport.update({
+  id: '/today',
+  path: '/today',
   getParentRoute: () => rootRouteImport,
 } as any)
 const EventIdRoute = EventIdRouteImport.update({
@@ -31,31 +55,69 @@ const EventIdRoute = EventIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/calendar': typeof CalendarRoute
+  '/forms': typeof FormsRoute
   '/submit': typeof SubmitRoute
+  '/temples': typeof TemplesRoute
+  '/today': typeof TodayRoute
   '/event/$id': typeof EventIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/calendar': typeof CalendarRoute
+  '/forms': typeof FormsRoute
   '/submit': typeof SubmitRoute
+  '/temples': typeof TemplesRoute
+  '/today': typeof TodayRoute
   '/event/$id': typeof EventIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/calendar': typeof CalendarRoute
+  '/forms': typeof FormsRoute
   '/submit': typeof SubmitRoute
+  '/temples': typeof TemplesRoute
+  '/today': typeof TodayRoute
   '/event/$id': typeof EventIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/submit' | '/event/$id'
+  fullPaths:
+    | '/'
+    | '/calendar'
+    | '/forms'
+    | '/submit'
+    | '/temples'
+    | '/today'
+    | '/event/$id'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/submit' | '/event/$id'
-  id: '__root__' | '/' | '/submit' | '/event/$id'
+  to:
+    | '/'
+    | '/calendar'
+    | '/forms'
+    | '/submit'
+    | '/temples'
+    | '/today'
+    | '/event/$id'
+  id:
+    | '__root__'
+    | '/'
+    | '/calendar'
+    | '/forms'
+    | '/submit'
+    | '/temples'
+    | '/today'
+    | '/event/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  CalendarRoute: typeof CalendarRoute
+  FormsRoute: typeof FormsRoute
   SubmitRoute: typeof SubmitRoute
+  TemplesRoute: typeof TemplesRoute
+  TodayRoute: typeof TodayRoute
   EventIdRoute: typeof EventIdRoute
 }
 
@@ -68,11 +130,39 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/calendar': {
+      id: '/calendar'
+      path: '/calendar'
+      fullPath: '/calendar'
+      preLoaderRoute: typeof CalendarRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/forms': {
+      id: '/forms'
+      path: '/forms'
+      fullPath: '/forms'
+      preLoaderRoute: typeof FormsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/submit': {
       id: '/submit'
       path: '/submit'
       fullPath: '/submit'
       preLoaderRoute: typeof SubmitRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/temples': {
+      id: '/temples'
+      path: '/temples'
+      fullPath: '/temples'
+      preLoaderRoute: typeof TemplesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/today': {
+      id: '/today'
+      path: '/today'
+      fullPath: '/today'
+      preLoaderRoute: typeof TodayRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/event/$id': {
@@ -87,7 +177,11 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  CalendarRoute: CalendarRoute,
+  FormsRoute: FormsRoute,
   SubmitRoute: SubmitRoute,
+  TemplesRoute: TemplesRoute,
+  TodayRoute: TodayRoute,
   EventIdRoute: EventIdRoute,
 }
 export const routeTree = rootRouteImport

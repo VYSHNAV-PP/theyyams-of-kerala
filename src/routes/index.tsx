@@ -1,247 +1,129 @@
-import {
-  createFileRoute,
-  ClientOnly,
-  Link,
-} from "@tanstack/react-router";
+import { createFileRoute, ClientOnly, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import {
-  lazy,
-  Suspense,
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
-import {
-  CalendarDays,
-  List,
-  Map as MapIcon,
-  Plus,
-  SlidersHorizontal,
-} from "lucide-react";
-
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { List, Map as MapIcon, SlidersHorizontal } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
-import {
-  Chip,
-  EventPreview,
-  EventRow,
-} from "@/components/EventViews";
+import { SiteFooter } from "@/components/SiteFooter";
+import { HeroBanner } from "@/components/HeroBanner";
+import { MapLegend } from "@/components/MapLegend";
+import { NowPanel, type ChipSpec } from "@/components/NowPanel";
+import { FormsSection } from "@/components/FormsSection";
+import { TheyyamCalendar } from "@/components/TheyyamCalendar";
+import { EventPreview } from "@/components/EventViews";
 import { FilterSheet } from "@/components/FilterSheet";
 import type { Viewport } from "@/components/EventMap";
 import {
-  CATEGORIES,
-  CATEGORY_META,
   DEFAULT_FILTERS,
   applyFilters,
   contextPlace,
   fetchEvents,
+  fmtDateShort,
+  FORMS,
+  inTab,
+  phaseOf,
   statusOf,
-  type DateKey,
+  todayIST,
   type Filters,
   type KEvent,
+  type Tab,
 } from "@/lib/events";
+import type { TheyyamForm } from "@/lib/taxonomy";
 import { KERALA_BOUNDS } from "@/lib/geo";
+import { useSaved } from "@/lib/saved";
 import { supabase } from "@/integrations/supabase/client";
 
-const EventMap = lazy(
-  () =>
-    import("@/components/EventMap"),
-);
+const EventMap = lazy(() => import("@/components/EventMap"));
 
-export const Route =
-  createFileRoute("/")({
-    head: () => ({
-      meta: [
-        {
-          title:
-            "Kerala Events — see what's happening across Kerala",
-        },
-        {
-          name: "description",
-          content:
-            "Explore events across Kerala's 14 districts on a live map. Search, filter and post events.",
-        },
-        {
-          property: "og:title",
-          content:
-            "Kerala Events — see what's happening across Kerala",
-        },
-        {
-          property: "og:description",
-          content:
-            "A community map of sports, cultural, religious and public events in Kerala.",
-        },
-        {
-          property: "og:type",
-          content: "website",
-        },
-        {
-          name: "twitter:card",
-          content:
-            "summary_large_image",
-        },
-      ],
-    }),
-    component: Home,
-  });
+const TITLE = "Theyyams of Kerala: find a Theyyam performance near you";
+const DESCRIPTION =
+  "A live map of Theyyam performances in kavus and temples across Kerala. Browse by form, date or district, and add what you know.";
 
-const QUICK: [
-  DateKey,
-  string,
-  string,
-][] = [
-  ["now", "Happening now", "#ef4444"],
-  ["today", "Today", "#3b82f6"],
-  ["weekend", "This weekend", "#8b5cf6"],
-  ["upcoming", "Upcoming", "#22c55e"],
-];
+export const Route = createFileRoute("/")({
+  // Other pages link here with a form, a search text or a day already chosen.
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { form?: string; q?: string; day?: string } => ({
+    ...(typeof search["form"] === "string" && search["form"] ? { form: search["form"] } : {}),
+    ...(typeof search["q"] === "string" && search["q"] ? { q: search["q"] } : {}),
+    ...(typeof search["day"] === "string" && /^\d{4}-\d{2}-\d{2}$/.test(search["day"])
+      ? { day: search["day"] }
+      : {}),
+  }),
+  head: () => ({
+    meta: [
+      { title: TITLE },
+      { name: "description", content: DESCRIPTION },
+      { property: "og:title", content: TITLE },
+      { property: "og:description", content: DESCRIPTION },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
+    ],
+  }),
+  component: Home,
+});
 
-/* ============================================================
-   DEBOUNCE
-   ============================================================ */
-
-function useDebounced<T>(
-  v: T,
-  ms: number,
-) {
-  const [d, setD] =
-    useState(v);
-
+function useDebounced<T>(v: T, ms: number) {
+  const [d, setD] = useState(v);
   useEffect(() => {
-    const t = setTimeout(
-      () => setD(v),
-      ms,
-    );
-
-    return () =>
-      clearTimeout(t);
+    const t = setTimeout(() => setD(v), ms);
+    return () => clearTimeout(t);
   }, [v, ms]);
-
   return d;
 }
 
-/* ============================================================
-   DESKTOP DETECTION
-   ============================================================ */
-
 function useIsDesktop() {
-  const [
-    isDesktop,
-    setIsDesktop,
-  ] = useState(false);
-
+  const [isDesktop, setIsDesktop] = useState(false);
   useEffect(() => {
-    const media =
-      window.matchMedia(
-        "(min-width: 1024px)",
-      );
-
-    const update = () =>
-      setIsDesktop(
-        media.matches,
-      );
-
+    const media = window.matchMedia("(min-width: 1024px)");
+    const update = () => setIsDesktop(media.matches);
     update();
-
-    media.addEventListener(
-      "change",
-      update,
-    );
-
-    return () =>
-      media.removeEventListener(
-        "change",
-        update,
-      );
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
   }, []);
-
   return isDesktop;
 }
 
-/* ============================================================
-   HOME
-   ============================================================ */
+const MapFallback = (
+  <div className="flex h-full items-center justify-center bg-raised text-sm text-muted-foreground">
+    Loading map…
+  </div>
+);
+
+/** Same height for the map and the Theyyam Now panel, so they always line up. */
+const ROW_H = "lg:h-[clamp(540px,calc(100dvh-var(--header-h)-230px),780px)]";
 
 function Home() {
-  const [f, setF] =
-    useState<Filters>(
-      DEFAULT_FILTERS,
-    );
+  const search = Route.useSearch();
+  const [f, setF] = useState<Filters>(() => {
+    const form = search.form ? FORMS.find((x) => x.name === search.form) : undefined;
+    return {
+      ...DEFAULT_FILTERS,
+      ...(search.q ? { q: search.q } : {}),
+      ...(form ? { category: form.family, subcategory: form.name } : {}),
+      ...(search.day ? { date: "custom" as const, from: search.day, to: search.day } : {}),
+    };
+  });
+  const [tab, setTab] = useState<Tab>(() => (search.form || search.day ? "all" : "upcoming"));
+  const [tabChosen, setTabChosen] = useState(() => !!(search.form || search.day));
+  const [view, setView] = useState<"map" | "list">("map");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [focus, setFocus] = useState<{ id: string; lat: number; lng: number } | null>(null);
+  const [vp, setVp] = useState<Viewport | null>(null);
+  const [user, setUser] = useState<[number, number] | null>(null);
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+  const isDesktop = useIsDesktop();
+  const saved = useSaved();
+  const mapAnchor = useRef<HTMLDivElement>(null);
+  const nav = useNavigate();
 
-  const [view, setView] =
-    useState<
-      "map" | "list"
-    >("map");
+  const showMap = isDesktop || view === "map";
 
-  const [
-    showEnded,
-    setShowEnded,
-  ] = useState(false);
-
-  const [
-    selectedId,
-    setSelectedId,
-  ] = useState<
-    string | null
-  >(null);
-
-  const [focus, setFocus] =
-    useState<{
-      id: string;
-      lat: number;
-      lng: number;
-    } | null>(null);
-
-  const [vp, setVp] =
-    useState<Viewport | null>(
-      null,
-    );
-
-  const [user, setUser] =
-    useState<
-      [number, number] | null
-    >(null);
-
-  const [
-    filterOpen,
-    setFilterOpen,
-  ] = useState(false);
-
-  const [
-    categoriesExpanded,
-    setCategoriesExpanded,
-  ] = useState(false);
-
-  const [now, setNow] =
-    useState(() =>
-      Date.now(),
-    );
-
-  const isDesktop =
-    useIsDesktop();
-
-  const showMap =
-    isDesktop ||
-    view === "map";
-
-  /* ==========================================================
-     CLOCK
-     ========================================================== */
-
+  // Clock: statuses (now / tonight / ended) move on without a reload.
   useEffect(() => {
-    const t = setInterval(
-      () =>
-        setNow(Date.now()),
-      60_000,
-    );
-
-    return () =>
-      clearInterval(t);
+    const t = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(t);
   }, []);
-
-  /* ==========================================================
-     EVENTS QUERY
-     ========================================================== */
 
   const q = useQuery({
     queryKey: ["events"],
@@ -249,1507 +131,438 @@ function Home() {
     staleTime: 30_000,
     refetchInterval: 60_000,
   });
+  const { refetch } = q;
 
-  /* ==========================================================
-     REALTIME UPDATES
-     ========================================================== */
-
+  // Pick up newly found images without a reload.
   useEffect(() => {
     const channel = supabase
-      .channel(
-        "events-image-updates",
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "events",
-        },
-        () => {
-          void q.refetch();
-        },
-      )
+      .channel("events-image-updates")
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "events" }, () => {
+        void refetch();
+      })
       .subscribe();
-
     return () => {
-      void supabase.removeChannel(
-        channel,
-      );
+      void supabase.removeChannel(channel);
     };
-  }, [q.refetch]);
+  }, [refetch]);
 
   const all = q.data;
 
-  /* ==========================================================
-     FILTERING
-     ========================================================== */
+  /* ---------- Filtering ---------- */
 
   const filtered = useMemo(
-    () =>
-      applyFilters(
-        all ?? [],
-        f,
-        now,
-        user,
-      ),
-    [all, f, now, user],
+    () => applyFilters(all ?? [], f, now, user, saved),
+    [all, f, now, user, saved],
   );
+  const dq = useDebounced(f.q, 400);
 
-  const dq = useDebounced(
-    f.q,
-    400,
-  );
+  const counts = useMemo(() => {
+    const c = { now: 0, tonight: 0, upcoming: 0, ended: 0 };
+    for (const e of filtered) {
+      if (inTab(e, "now", now)) c.now++;
+      if (inTab(e, "tonight", now)) c.tonight++;
+      if (inTab(e, "upcoming", now)) c.upcoming++;
+      if (inTab(e, "ended", now)) c.ended++;
+    }
+    return c;
+  }, [filtered, now]);
 
-  /* ==========================================================
-     SPLIT ACTIVE / ENDED EVENTS
-     ========================================================== */
-
-  const endedEvents =
-    useMemo(
-      () =>
-        filtered.filter(
-          (event) =>
-            statusOf(
-              event,
-              now,
-            ) === "ended",
-        ),
-      [filtered, now],
-    );
-
-  const activeEvents =
-    useMemo(
-      () =>
-        filtered.filter(
-          (event) =>
-            statusOf(
-              event,
-              now,
-            ) !== "ended",
-        ),
-      [filtered, now],
-    );
-
-  const mapEvents =
-    activeEvents;
-
-  const visibleListEvents =
-    showEnded
-      ? endedEvents
-      : activeEvents;
-
-  /* ==========================================================
-     MAP CONTEXT
-     ========================================================== */
-
-  const place =
-    contextPlace(
-      vp
-        ? mapEvents.filter(
-            (e) =>
-              e.lat >=
-                vp.bounds[0] &&
-              e.lat <=
-                vp.bounds[2] &&
-              e.lng >=
-                vp.bounds[1] &&
-              e.lng <=
-                vp.bounds[3],
-          )
-        : mapEvents,
-      vp?.zoom ?? 7,
-      f.district,
-    );
-
-  const placeCount =
-    place === "Kerala"
-      ? activeEvents.length
-      : activeEvents.filter(
-          (e) =>
-            e.district ===
-              place ||
-            e.locality ===
-              place,
-        ).length;
-
-  /* ==========================================================
-     MAP FIT
-     ========================================================== */
-
-  const fit = useMemo(
-    () => {
-      const active =
-        !!f.district ||
-        !!dq ||
-        f.category !==
-          "All";
-
-      const key =
-        JSON.stringify([
-          f.district,
-          dq,
-          f.category,
-          f.subcategory,
-        ]);
-
-      if (!active) {
-        return {
-          key,
-          bounds:
-            KERALA_BOUNDS,
-        };
-      }
-
-      if (!mapEvents.length) {
-        return {
-          key,
-          bounds: null,
-        };
-      }
-
-      const lats =
-        mapEvents.map(
-          (e) => e.lat,
-        );
-
-      const lngs =
-        mapEvents.map(
-          (e) => e.lng,
-        );
-
-      return {
-        key,
-        bounds: [
-          [
-            Math.min(
-              ...lats,
-            ),
-            Math.min(
-              ...lngs,
-            ),
-          ],
-          [
-            Math.max(
-              ...lats,
-            ),
-            Math.max(
-              ...lngs,
-            ),
-          ],
-        ] as [
-          [number, number],
-          [number, number],
-        ],
-      };
-    },
+  // Open on the most useful tab once, unless the visitor already chose one.
+  useEffect(() => {
+    if (tabChosen || !q.isSuccess) return;
+    setTab(counts.now > 0 ? "now" : counts.tonight > 0 ? "tonight" : "upcoming");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [
-      f.district,
-      dq,
-      f.category,
-      f.subcategory,
-      mapEvents,
-    ],
+  }, [q.isSuccess, tabChosen]);
+
+  const listEvents = useMemo(
+    () => filtered.filter((e) => inTab(e, tab, now)),
+    [filtered, tab, now],
+  );
+  const mapEvents = useMemo(
+    () => filtered.filter((e) => statusOf(e, now) !== "ended"),
+    [filtered, now],
   );
 
-  /* ==========================================================
-     SELECTED EVENT
-     ========================================================== */
+  /* ---------- Map context ---------- */
 
-  const selected =
-    activeEvents.find(
-      (e) =>
-        e.id ===
-        selectedId,
-    ) ?? null;
+  const place = contextPlace(
+    vp
+      ? mapEvents.filter(
+          (e) =>
+            e.lat >= vp.bounds[0] &&
+            e.lat <= vp.bounds[2] &&
+            e.lng >= vp.bounds[1] &&
+            e.lng <= vp.bounds[3],
+        )
+      : mapEvents,
+    vp?.zoom ?? 7,
+    f.district,
+  );
+
+  const fit = useMemo(() => {
+    const active = !!f.district || !!dq || f.category !== "All" || !!f.subcategory;
+    const hasEvents = mapEvents.length > 0;
+    const key = JSON.stringify([f.district, dq, f.category, f.subcategory, !active && hasEvents]);
+
+    // Unfiltered: frame the performances that exist (mostly North Malabar), else all of Kerala.
+    if (!active && !hasEvents) return { key, bounds: KERALA_BOUNDS };
+    if (!hasEvents) return { key, bounds: null };
+
+    const lats = mapEvents.map((e) => e.lat);
+    const lngs = mapEvents.map((e) => e.lng);
+    return {
+      key,
+      bounds: [
+        [Math.min(...lats), Math.min(...lngs)],
+        [Math.max(...lats), Math.max(...lngs)],
+      ] as [[number, number], [number, number]],
+    };
+  }, [f.district, dq, f.category, f.subcategory, mapEvents]);
+
+  /* ---------- Selection ---------- */
+
+  const selected = mapEvents.find((e) => e.id === selectedId) ?? null;
 
   useEffect(() => {
-    if (
-      selectedId &&
-      !activeEvents.some(
-        (e) =>
-          e.id ===
-          selectedId,
-      )
-    ) {
-      setSelectedId(null);
-    }
-  }, [
-    selectedId,
-    activeEvents,
-  ]);
+    if (selectedId && !mapEvents.some((e) => e.id === selectedId)) setSelectedId(null);
+  }, [selectedId, mapEvents]);
 
-  /* ==========================================================
-     SEARCH
-     ========================================================== */
+  const onSelect = useCallback((e: KEvent) => {
+    if (statusOf(e, Date.now()) === "ended") return;
+    setSelectedId(e.id);
+  }, []);
 
-  const setQ =
-    useCallback(
-      (v: string) =>
-        setF((x) => ({
-          ...x,
-          q: v,
-        })),
-      [],
-    );
+  const scrollToMap = () =>
+    mapAnchor.current?.scrollIntoView({ behavior: "smooth", block: "start" });
 
-  /* ==========================================================
-     MAP EVENT SELECTION
-     ========================================================== */
-
-  const onSelect =
-    useCallback(
-      (e: KEvent) => {
-        if (
-          statusOf(
-            e,
-            Date.now(),
-          ) === "ended"
-        ) {
-          return;
-        }
-
-        setShowEnded(false);
-        setSelectedId(
-          e.id,
-        );
-      },
-      [],
-    );
-
-  /* ==========================================================
-     LIST EVENT SELECTION
-     ========================================================== */
-
-  const pickFromList = (
-    e: KEvent,
-  ) => {
-    if (
-      statusOf(
-        e,
-        now,
-      ) === "ended"
-    ) {
-      setSelectedId(null);
+  const pickFromList = (e: KEvent) => {
+    if (statusOf(e, now) === "ended") {
+      // Ended performances are not on the map: open their page instead.
+      void nav({ to: "/event/$id", params: { id: e.id } });
       return;
     }
-
-    setShowEnded(false);
     setSelectedId(e.id);
-
-    setFocus({
-      id: e.id,
-      lat: e.lat,
-      lng: e.lng,
-    });
-
+    setFocus({ id: e.id, lat: e.lat, lng: e.lng });
     if (view === "list") {
       setView("map");
+      requestAnimationFrame(scrollToMap);
     }
   };
 
-  /* ==========================================================
-     DATE FILTER
-     ========================================================== */
+  /* ---------- Controls ---------- */
 
-  const toggleDate = (
-    k: DateKey,
-  ) => {
-    setF((x) => ({
-      ...x,
-      date:
-        x.date === k
-          ? "any"
-          : k,
-    }));
+  const setQ = useCallback((v: string) => setF((x) => ({ ...x, q: v })), []);
+
+  const chooseTab = (t: Tab) => {
+    setTab(t);
+    setTabChosen(true);
+    setSelectedId(null);
   };
 
-  /* ==========================================================
-     LOCATION
-     ========================================================== */
-
-  const askLocation =
-    useCallback(
-      () =>
-        new Promise<boolean>(
-          (res) => {
-            if (
-              !navigator.geolocation
-            ) {
-              return res(false);
-            }
-
-            navigator.geolocation.getCurrentPosition(
-              (p) => {
-                setUser([
-                  p.coords
-                    .latitude,
-                  p.coords
-                    .longitude,
-                ]);
-
-                res(true);
-              },
-              () =>
-                res(false),
-              {
-                timeout:
-                  10000,
-              },
-            );
+  const askLocation = useCallback(
+    () =>
+      new Promise<boolean>((res) => {
+        if (!navigator.geolocation) return res(false);
+        navigator.geolocation.getCurrentPosition(
+          (p) => {
+            setUser([p.coords.latitude, p.coords.longitude]);
+            res(true);
           },
-        ),
-      [],
-    );
-
-  /* ==========================================================
-     FILTER COUNT
-     ========================================================== */
-
-  const countFor =
-    useCallback(
-      (x: Filters) =>
-        applyFilters(
-          all ?? [],
-          x,
-          now,
-          user,
-        ).filter(
-          (event) =>
-            statusOf(
-              event,
-              now,
-            ) !== "ended",
-        ).length,
-      [all, now, user],
-    );
-
-  const activeAdvanced =
-    [
-      f.subcategory,
-      f.district,
-      f.locality,
-      f.nearby,
-      f.entry !== "any",
-      f.date !==
-        "any" &&
-        !QUICK.some(
-          ([k]) =>
-            k === f.date,
-        ),
-      f.category !==
-        "All",
-    ].filter(Boolean)
-      .length;
-
-  const filtersOn =
-    JSON.stringify({
-      ...f,
-      q: "",
-    }) !==
-      JSON.stringify(
-        DEFAULT_FILTERS,
-      ) || !!f.q;
-
-  /* ==========================================================
-     EMPTY STATES
-     ========================================================== */
-
-  const activeEmpty =
-    q.isSuccess &&
-    activeEvents.length === 0;
-
-  const endedEmpty =
-    q.isSuccess &&
-    endedEvents.length === 0;
-
-  /* ==========================================================
-     EVENT LIST
-     ========================================================== */
-
-  const list = (
-    <ul
-      aria-label={
-        showEnded
-          ? "Ended events"
-          : "Events"
-      }
-    >
-      {visibleListEvents.map(
-        (e) => (
-          <EventRow
-            key={e.id}
-            e={e}
-            active={
-              e.id ===
-              selectedId
-            }
-            onClick={() =>
-              pickFromList(e)
-            }
-          />
-        ),
-      )}
-    </ul>
+          () => res(false),
+          { timeout: 10000 },
+        );
+      }),
+    [],
   );
 
-  /* ==========================================================
-     RENDER
-     ========================================================== */
+  const countFor = useCallback(
+    (x: Filters) =>
+      applyFilters(all ?? [], x, now, user, saved).filter((e) => statusOf(e, now) !== "ended")
+        .length,
+    [all, now, user, saved],
+  );
+
+  const pickForm = (form: TheyyamForm) => {
+    setF((x) => ({ ...x, category: form.family, subcategory: form.name }));
+    chooseTab("all");
+    setView("map");
+    requestAnimationFrame(scrollToMap);
+  };
+
+  const selectedDay = f.date === "custom" && f.from && f.from === f.to ? f.from : null;
+
+  const pickDay = (iso: string | null) => {
+    if (!iso) {
+      setF((x) => ({ ...x, date: "any", from: "", to: "" }));
+      chooseTab("upcoming");
+      return;
+    }
+    setF((x) => ({ ...x, date: "custom", from: iso, to: iso }));
+    chooseTab(iso < todayIST(now) ? "ended" : "all");
+    if (isDesktop) {
+      // The list sits at the top of the right column, so bring it into view.
+      requestAnimationFrame(scrollToMap);
+    } else {
+      setView("list");
+      requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "smooth" }));
+    }
+  };
+
+  const clearAll = () => setF(DEFAULT_FILTERS);
+
+  /* ---------- Active filter chips ---------- */
+
+  const chips: ChipSpec[] = [];
+  if (f.q.trim()) chips.push({ key: "q", label: `“${f.q.trim()}”`, onRemove: () => setQ("") });
+  if (f.category !== "All")
+    chips.push({
+      key: "cat",
+      label: f.category,
+      onRemove: () => setF((x) => ({ ...x, category: "All", subcategory: null })),
+    });
+  if (f.subcategory)
+    chips.push({
+      key: "sub",
+      label: f.subcategory,
+      onRemove: () => setF((x) => ({ ...x, subcategory: null })),
+    });
+  if (f.district)
+    chips.push({
+      key: "dist",
+      label: f.district,
+      onRemove: () => setF((x) => ({ ...x, district: null })),
+    });
+  if (f.locality.trim())
+    chips.push({
+      key: "loc",
+      label: f.locality.trim(),
+      onRemove: () => setF((x) => ({ ...x, locality: "" })),
+    });
+  if (f.nearby)
+    chips.push({
+      key: "near",
+      label: "Near me",
+      onRemove: () => setF((x) => ({ ...x, nearby: false })),
+    });
+  if (f.date !== "any") {
+    const labels: Record<string, string> = {
+      now: "Performing now",
+      today: "Today",
+      tonight: "Tonight",
+      tomorrow: "Tomorrow",
+      weekend: "This weekend",
+      week: "Next 7 days",
+      month: "This month",
+      upcoming: "Upcoming",
+    };
+    const label =
+      f.date === "custom"
+        ? f.from && f.from === f.to
+          ? fmtDateShort(f.from)
+          : `${f.from ? fmtDateShort(f.from) : "Today"} to ${f.to ? fmtDateShort(f.to) : "later"}`
+        : (labels[f.date] ?? f.date);
+    chips.push({
+      key: "date",
+      label,
+      onRemove: () => setF((x) => ({ ...x, date: "any", from: "", to: "" })),
+    });
+  }
+  if (f.confirmed)
+    chips.push({
+      key: "ver",
+      label: "Verified only",
+      onRemove: () => setF((x) => ({ ...x, confirmed: false })),
+    });
+  if (f.savedOnly)
+    chips.push({
+      key: "sav",
+      label: "Saved",
+      onRemove: () => setF((x) => ({ ...x, savedOnly: false })),
+    });
+
+  const filterCount = [
+    f.category !== "All",
+    !!f.subcategory,
+    !!f.district,
+    !!f.locality.trim(),
+    f.nearby,
+    f.date !== "any",
+    f.confirmed,
+    f.savedOnly,
+  ].filter(Boolean).length;
+
+  const panel = (
+    <NowPanel
+      tab={tab}
+      onTab={chooseTab}
+      counts={counts}
+      events={listEvents}
+      now={now}
+      selectedId={selectedId}
+      onPick={pickFromList}
+      onOpenFilters={() => setFilterOpen(true)}
+      filterCount={filterCount}
+      chips={chips}
+      onClearAll={clearAll}
+      place={place}
+      loading={q.isLoading}
+      failed={q.isError}
+      onRetry={() => void q.refetch()}
+      scrollable={isDesktop}
+    />
+  );
+
+  const noMapResults = q.isSuccess && mapEvents.length === 0 && !selected;
 
   return (
-    <div className="flex min-h-dvh flex-col overflow-x-hidden bg-background [touch-action:pan-y]">
-      <SiteHeader
-        search={{
-          value: f.q,
-          onChange: setQ,
-        }}
-      />
+    <div className="flex min-h-dvh flex-col overflow-x-hidden bg-background">
+      <SiteHeader search={{ value: f.q, onChange: setQ }} />
+      <HeroBanner />
 
-      {/* =====================================================
-          CATEGORIES + QUICK FILTERS
-          ===================================================== */}
-
-      <div className="shrink-0 border-b border-border bg-card">
-        <div className="mx-auto flex w-full max-w-[1800px] flex-col items-center px-2 py-2 sm:px-4 sm:py-2.5 md:px-6 lg:px-8 xl:px-10">
+      <main className="mx-auto w-full max-w-[1800px] flex-1 px-3 py-3 sm:px-4 lg:px-6 lg:py-5">
+        {/* Phone and tablet: switch between map and list; the Filters button stays beside them. */}
+        <div className="mb-3 flex items-center justify-between gap-2 lg:hidden">
           <div
-            className="flex w-full flex-wrap justify-center gap-1.5 sm:gap-2 md:gap-2.5"
+            className="flex overflow-hidden rounded-md border border-border"
             role="group"
-            aria-label="Categories"
+            aria-label="View"
           >
-            <Chip
-              active={
-                f.category ===
-                "All"
-              }
-              onClick={() =>
-                setF((x) => ({
-                  ...x,
-                  category: "All",
-                  subcategory:
-                    null,
-                }))
-              }
-            >
-              <span className="md:text-sm">
-                All
+            {(
+              [
+                ["map", "Map", MapIcon],
+                ["list", "List", List],
+              ] as const
+            ).map(([key, label, Icon]) => (
+              <button
+                key={key}
+                type="button"
+                aria-pressed={view === key}
+                onClick={() => setView(key)}
+                className={`tap flex h-10 items-center gap-1.5 px-4 text-sm font-semibold ${
+                  view === key
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-card text-muted-foreground hover:bg-accent"
+                }`}
+              >
+                <Icon size={16} aria-hidden="true" />
+                {label}
+              </button>
+            ))}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setFilterOpen(true)}
+            className={`tap h-10 items-center gap-2 rounded-md border px-3.5 text-sm font-semibold hover:bg-accent ${
+              view === "list" ? "hidden" : "flex"
+            } ${filterCount > 0 ? "border-gold text-gold" : "border-border"}`}
+          >
+            <SlidersHorizontal size={16} aria-hidden="true" />
+            Filters
+            {filterCount > 0 && (
+              <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-bold text-primary-foreground">
+                {filterCount}
               </span>
-            </Chip>
-
-            {CATEGORIES.slice(
-              0,
-              2,
-            ).map(
-              (c) => (
-                <Chip
-                  key={c}
-                  active={
-                    f.category ===
-                    c
-                  }
-                  onClick={() =>
-                    setF((x) => ({
-                      ...x,
-                      category:
-                        x.category ===
-                        c
-                          ? "All"
-                          : c,
-                      subcategory:
-                        null,
-                    }))
-                  }
-                >
-                  <span
-                    className="text-base md:text-lg"
-                    aria-hidden="true"
-                  >
-                    {
-                      CATEGORY_META[
-                        c
-                      ].icon
-                    }
-                  </span>
-
-                  <span className="md:text-sm">
-                    {c}
-                  </span>
-                </Chip>
-              ),
             )}
-
-            {!categoriesExpanded && (
-              <button
-                type="button"
-                onClick={() =>
-                  setCategoriesExpanded(
-                    true,
-                  )
-                }
-                aria-label="Show all categories"
-                className="flex h-9 shrink-0 items-center justify-center rounded-lg border border-border bg-card px-3 text-base font-bold leading-none text-foreground shadow-sm transition-colors hover:bg-muted sm:hidden"
-              >
-                …
-              </button>
-            )}
-
-            <div
-              className={`contents ${
-                categoriesExpanded
-                  ? ""
-                  : "hidden sm:contents"
-              }`}
-            >
-              {CATEGORIES.slice(
-                2,
-              ).map(
-                (c) => (
-                  <Chip
-                    key={c}
-                    active={
-                      f.category ===
-                      c
-                    }
-                    onClick={() =>
-                      setF((x) => ({
-                        ...x,
-                        category:
-                          x.category ===
-                          c
-                            ? "All"
-                            : c,
-                        subcategory:
-                          null,
-                      }))
-                    }
-                  >
-                    <span
-                      className="text-base md:text-lg"
-                      aria-hidden="true"
-                    >
-                      {
-                        CATEGORY_META[
-                          c
-                        ].icon
-                      }
-                    </span>
-
-                    <span className="md:text-sm">
-                      {c}
-                    </span>
-                  </Chip>
-                ),
-              )}
-
-              {categoriesExpanded && (
-                <button
-                  type="button"
-                  onClick={() =>
-                    setCategoriesExpanded(
-                      false,
-                    )
-                  }
-                  aria-label="Collapse categories"
-                  className="flex h-9 shrink-0 items-center justify-center rounded-lg border border-border bg-card px-3 text-base font-bold leading-none text-foreground shadow-sm transition-colors hover:bg-muted sm:hidden"
-                >
-                  …
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* QUICK FILTERS */}
-
-          <div
-            className="mt-2 w-full rounded-xl border border-[#e2e8f0] bg-[#f1f5f9] p-1.5 sm:mt-2.5 md:mt-3 md:p-2"
-            role="group"
-            aria-label="Quick filters"
-          >
-            <div className="flex flex-wrap items-center justify-center gap-1.5 md:gap-2">
-              <div className="flex h-9 shrink-0 items-center gap-1.5 px-2 text-[10px] font-bold uppercase tracking-wider text-[#64748b] md:h-10 md:px-3 md:text-xs">
-                <CalendarDays
-                  size={14}
-                  className="md:h-4 md:w-4"
-                  aria-hidden="true"
-                />
-
-                <span>
-                  Quick filters
-                </span>
-              </div>
-
-              {QUICK.map(
-                ([
-                  k,
-                  label,
-                  tone,
-                ]) => {
-                  const active =
-                    f.date ===
-                    k;
-
-                  return (
-                    <button
-                      key={k}
-                      type="button"
-                      aria-pressed={
-                        active
-                      }
-                      onClick={() =>
-                        toggleDate(
-                          k,
-                        )
-                      }
-                      className="flex h-9 shrink-0 items-center gap-2 rounded-lg border px-3 text-[11px] font-semibold transition-all focus-visible:outline-2 focus-visible:outline-ring md:h-10 md:px-4 md:text-[13px]"
-                      style={
-                        active
-                          ? {
-                              borderColor:
-                                tone,
-                              backgroundColor:
-                                tone,
-                              color:
-                                "#ffffff",
-                              boxShadow:
-                                `0 1px 2px ${tone}40`,
-                            }
-                          : {
-                              borderColor:
-                                `${tone}45`,
-                              backgroundColor:
-                                "#ffffff",
-                              color:
-                                tone,
-                            }
-                      }
-                    >
-                      <span
-                        className="h-1.5 w-1.5 shrink-0 rounded-full md:h-2 md:w-2"
-                        style={{
-                          backgroundColor:
-                            tone,
-                        }}
-                        aria-hidden="true"
-                      />
-
-                      {label}
-                    </button>
-                  );
-                },
-              )}
-
-              {/* FREE EVENTS */}
-
-              <button
-                type="button"
-                aria-pressed={
-                  f.entry ===
-                  "free"
-                }
-                onClick={() =>
-                  setF((x) => ({
-                    ...x,
-                    entry:
-                      x.entry ===
-                      "free"
-                        ? "any"
-                        : "free",
-                  }))
-                }
-                className="flex h-9 shrink-0 items-center gap-2 rounded-lg border px-3 text-[11px] font-semibold transition-all focus-visible:outline-2 focus-visible:outline-ring md:h-10 md:px-4 md:text-[13px]"
-                style={
-                  f.entry ===
-                  "free"
-                    ? {
-                        borderColor:
-                          "#14b8a6",
-                        backgroundColor:
-                          "#14b8a6",
-                        color:
-                          "#ffffff",
-                        boxShadow:
-                          "0 1px 2px #14b8a640",
-                      }
-                    : {
-                        borderColor:
-                          "#14b8a665",
-                        backgroundColor:
-                          "#ffffff",
-                        color:
-                          "#0f766e",
-                      }
-                }
-              >
-                <span
-                  className="h-1.5 w-1.5 shrink-0 rounded-full md:h-2 md:w-2"
-                  style={{
-                    backgroundColor:
-                      "#14b8a6",
-                  }}
-                  aria-hidden="true"
-                />
-
-                Free events
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* =====================================================
-          MAIN WORKSPACE
-          ===================================================== */}
-
-      <main
-        className={`relative flex min-h-0 flex-1 flex-col [touch-action:pan-y] ${
-          view === "map"
-            ? "overflow-y-auto overflow-x-hidden lg:overflow-hidden"
-            : "overflow-hidden"
-        }`}
-      >
-        {/* MOBILE / TABLET CONTROLS */}
-
-        <div className="shrink-0 border-b border-border bg-card px-2 py-2 lg:hidden">
-          <div className="flex items-center justify-center gap-2">
-            <button
-              type="button"
-              onClick={() =>
-                setFilterOpen(true)
-              }
-              className="flex h-9 items-center gap-1.5 rounded-lg border border-border bg-card px-3 text-sm font-medium hover:bg-muted sm:h-10 sm:px-4"
-            >
-              <SlidersHorizontal
-                size={16}
-                aria-hidden="true"
-              />
-
-              Filters
-
-              {activeAdvanced >
-                0 && (
-                <span className="rounded-full bg-primary px-1.5 text-xs text-primary-foreground">
-                  {
-                    activeAdvanced
-                  }
-                </span>
-              )}
-            </button>
-
-            <div
-              className="flex overflow-hidden rounded-lg border border-border"
-              role="group"
-              aria-label="View"
-            >
-              <button
-                type="button"
-                aria-pressed={
-                  view === "map"
-                }
-                onClick={() =>
-                  setView("map")
-                }
-                className={`flex h-9 items-center gap-1.5 px-3 text-sm font-medium sm:h-10 sm:px-4 ${
-                  view === "map"
-                    ? "bg-foreground text-background"
-                    : "bg-card hover:bg-muted"
-                }`}
-              >
-                <MapIcon
-                  size={15}
-                  aria-hidden="true"
-                />
-
-                Map
-              </button>
-
-              <button
-                type="button"
-                aria-pressed={
-                  view === "list"
-                }
-                onClick={() =>
-                  setView("list")
-                }
-                className={`flex h-9 items-center gap-1.5 px-3 text-sm font-medium sm:h-10 sm:px-4 ${
-                  view === "list"
-                    ? "bg-foreground text-background"
-                    : "bg-card hover:bg-muted"
-                }`}
-              >
-                <List
-                  size={15}
-                  aria-hidden="true"
-                />
-
-                List
-              </button>
-            </div>
-          </div>
+          </button>
         </div>
 
-        {/* SMALL DESCRIPTION */}
-
-        <div className="mx-auto w-full max-w-[1800px] shrink-0 px-2 pt-2 sm:px-3 sm:pt-3 lg:px-4">
-          <p className="text-center text-xs text-muted-foreground sm:text-sm">
-            Explore events across Kerala —
-            browse the map, filter by category
-            or date, and tap an event for
-            details.
-          </p>
-        </div>
-
-        {/* ===================================================
-            WORKSPACE
-            =================================================== */}
-
-        <div
-          className={`mx-auto w-full max-w-[1800px] px-1.5 sm:px-2 md:px-3 lg:px-4 ${
-            view === "map"
-              ? "flex-none py-1.5 sm:py-2"
-              : "flex min-h-0 flex-1 py-1.5 sm:py-2"
-          }`}
-        >
-          <div
-            className={`relative w-full gap-2 sm:gap-3 lg:gap-4 ${
-              view === "map"
-                ? "flex min-h-[calc(100dvh-80px)] flex-none"
-                : "flex min-h-0 flex-1"
-            } lg:h-[calc(100dvh-260px)] lg:min-h-[520px]`}
-          >
-
-            {/* =================================================
-                MAP PANEL
-                ================================================= */}
+        {/* Row 1: map and Theyyam Now, the same height. The list scrolls inside its panel. */}
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_400px] xl:grid-cols-[minmax(0,1fr)_430px]">
+          <div className="min-w-0">
+            <div id="map" ref={mapAnchor} className="ke-anchor" />
 
             {showMap && (
               <div
-                className={`relative min-w-0 flex-1 overflow-hidden rounded-xl border border-border bg-muted shadow-sm [touch-action:auto] sm:rounded-2xl lg:min-h-0 ${
-                  view === "map"
-                    ? "min-h-[calc(100dvh-80px)]"
-                    : "min-h-0"
-                }`}
+                className={`relative h-[64dvh] min-h-[420px] overflow-hidden rounded-2xl border border-gold-line bg-raised lg:min-h-0 ${ROW_H}`}
               >
-                <ClientOnly
-                  fallback={
-                    <div className="flex h-full items-center justify-center bg-muted text-sm text-muted-foreground">
-                      Loading map…
-                    </div>
-                  }
-                >
-                  <Suspense
-                    fallback={
-                      <div className="flex h-full items-center justify-center bg-muted text-sm text-muted-foreground">
-                        Loading map…
-                      </div>
-                    }
-                  >
+                <ClientOnly fallback={MapFallback}>
+                  <Suspense fallback={MapFallback}>
                     <EventMap
                       key="event-map"
                       events={mapEvents}
-                      selectedId={
-                        selectedId
-                      }
+                      selectedId={selectedId}
                       focus={focus}
                       fit={fit}
                       onSelect={onSelect}
-                      onViewport={
-                        setVp
-                      }
-                      onLocate={(
-                        lat,
-                        lng,
-                      ) =>
-                        setUser([
-                          lat,
-                          lng,
-                        ])
-                      }
+                      onViewport={setVp}
+                      onLocate={(lat, lng) => setUser([lat, lng])}
                     />
                   </Suspense>
                 </ClientOnly>
 
-                {q.isFetching &&
-                  !all && (
-                    <p
-                      role="status"
-                      className="absolute left-1/2 top-3 z-[500] -translate-x-1/2 rounded-full bg-card px-3 py-1 text-xs shadow"
-                    >
-                      Loading events…
-                    </p>
-                  )}
+                <MapLegend />
 
-                {q.isError && (
-                  <div
-                    role="alert"
-                    className="absolute left-1/2 top-16 z-[500] w-[90%] max-w-sm -translate-x-1/2 rounded-lg border border-border bg-card p-4 text-center shadow-lg"
-                  >
+                {noMapResults && !q.isError && (
+                  <div className="absolute inset-x-3 top-3 z-[500] mx-auto max-w-sm rounded-md border border-gold-line bg-popover p-4 text-center shadow-lg">
                     <p className="text-sm font-semibold">
-                      We couldn't load
-                      events
+                      {all?.length
+                        ? "No performances on the map match"
+                        : "No performances on the map yet"}
                     </p>
-
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Check your
-                      connection and
-                      try again.
-                    </p>
-
-                    <button
-                      type="button"
-                      onClick={() =>
-                        void q.refetch()
-                      }
-                      className="mt-3 h-9 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground"
-                    >
-                      Retry
-                    </button>
-                  </div>
-                )}
-
-                {activeEmpty &&
-                  !selected && (
-                    <div className="absolute inset-x-2 bottom-3 z-[500] mx-auto max-w-sm rounded-lg border border-border bg-card p-4 text-center shadow-lg sm:inset-x-3 sm:bottom-4">
-                      <p className="text-sm font-semibold">
-                        {all?.length
-                          ? "No active events match these filters"
-                          : "No events on the map yet"}
-                      </p>
-
-                      <div className="mt-3 flex flex-wrap justify-center gap-2">
-                        {filtersOn && (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setF(
-                                DEFAULT_FILTERS,
-                              )
-                            }
-                            className="h-9 rounded-md border border-border px-3 text-sm font-medium hover:bg-muted"
-                          >
-                            Clear
-                            filters
-                          </button>
-                        )}
-
-                        {endedEvents.length >
-                          0 && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setShowEnded(
-                                true,
-                              );
-                              setView(
-                                "list",
-                              );
-                            }}
-                            className="h-9 rounded-md border border-border px-3 text-sm font-medium hover:bg-muted"
-                          >
-                            View ended (
-                            {
-                              endedEvents.length
-                            }
-                            )
-                          </button>
-                        )}
-
-                        <Link
-                          to="/submit"
-                          className="flex h-9 items-center gap-1 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground"
-                        >
-                          <Plus
-                            size={14}
-                            aria-hidden="true"
-                          />
-                          Post an Event
-                        </Link>
-                      </div>
-                    </div>
-                  )}
-
-                {/* DESKTOP EVENT PREVIEW */}
-
-                {selected &&
-                  view === "map" && (
-                    <div className="absolute inset-x-0 bottom-0 z-[600] sm:inset-x-2 sm:bottom-2 md:inset-x-3 md:bottom-3 lg:inset-x-auto lg:left-3 lg:w-96">
-                      <div className="hidden lg:block">
-                        <EventPreview
-                          e={selected}
-                          onClose={() =>
-                            setSelectedId(
-                              null,
-                            )
-                          }
-                        />
-                      </div>
-                    </div>
-                  )}
-              </div>
-            )}
-
-            {/* =================================================
-                DESKTOP EVENT PANEL
-                ================================================= */}
-
-            <aside
-              aria-label="Event list"
-              className="hidden min-h-0 w-full shrink-0 flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm sm:rounded-2xl lg:flex lg:w-[360px] xl:w-[400px] 2xl:w-[420px]"
-            >
-              <div className="shrink-0 border-b border-border bg-card">
-                <div className="flex items-center justify-between gap-2 px-2.5 py-2 sm:px-3">
-                  <div className="min-w-0">
-                    <p
-                      className="truncate text-sm font-semibold"
-                      aria-live="polite"
-                    >
-                      {q.isLoading
-                        ? "Loading events…"
-                        : showEnded
-                          ? `${endedEvents.length} ${
-                              endedEvents.length ===
-                              1
-                                ? "ended event"
-                                : "ended events"
-                            }`
-                          : ""}
-                    </p>
-
-                    {f.subcategory && (
-                      <p className="truncate text-xs text-muted-foreground">
-                        {f.subcategory}
-                      </p>
+                    {chips.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={clearAll}
+                        className="tap mt-3 h-9 rounded-md border border-border px-3 text-sm font-semibold hover:bg-accent"
+                      >
+                        Clear filters
+                      </button>
                     )}
                   </div>
-
-                  <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
-                    <button
-                      type="button"
-                      aria-pressed={
-                        showEnded
-                      }
-                      onClick={() => {
-                        setShowEnded(
-                          (value) =>
-                            !value,
-                        );
-                        setSelectedId(
-                          null,
-                        );
-                      }}
-                      className={`flex h-9 items-center gap-1.5 rounded-md border px-2.5 text-sm font-medium transition-colors sm:px-3 ${
-                        showEnded
-                          ? "border-foreground bg-foreground text-background"
-                          : "border-border bg-card hover:bg-muted"
-                      }`}
-                    >
-                      <span>
-                        Ended
-                      </span>
-
-                      {endedEvents.length >
-                        0 && (
-                        <span
-                          className={`rounded-full px-1.5 text-xs ${
-                            showEnded
-                              ? "bg-background/20 text-background"
-                              : "bg-muted text-muted-foreground"
-                          }`}
-                        >
-                          {
-                            endedEvents.length
-                          }
-                        </span>
-                      )}
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setFilterOpen(
-                          true,
-                        )
-                      }
-                      className="flex h-9 items-center gap-1.5 rounded-md border border-border px-2.5 text-sm font-medium hover:bg-muted sm:px-3"
-                    >
-                      <SlidersHorizontal
-                        size={16}
-                        aria-hidden="true"
-                      />
-
-                      <span className="hidden sm:inline">
-                        Filters
-                      </span>
-
-                      {activeAdvanced >
-                        0 && (
-                        <span className="rounded-full bg-primary px-1.5 text-xs text-primary-foreground">
-                          {
-                            activeAdvanced
-                          }
-                        </span>
-                      )}
-                    </button>
-
-                    <div
-                      className="flex overflow-hidden rounded-md border border-border"
-                      role="group"
-                      aria-label="View"
-                    >
-                      <button
-                        type="button"
-                        aria-pressed={
-                          view ===
-                          "map"
-                        }
-                        onClick={() => {
-                          setShowEnded(
-                            false,
-                          );
-                          setView(
-                            "map",
-                          );
-                        }}
-                        className={`flex h-9 items-center gap-1.5 px-2.5 text-sm font-medium ${
-                          view ===
-                          "map"
-                            ? "bg-foreground text-background"
-                            : "bg-card hover:bg-muted"
-                        }`}
-                      >
-                        <MapIcon
-                          size={15}
-                          aria-hidden="true"
-                        />
-
-                        <span className="hidden xl:inline">
-                          Map
-                        </span>
-                      </button>
-
-                      <button
-                        type="button"
-                        aria-pressed={
-                          view ===
-                          "list"
-                        }
-                        onClick={() =>
-                          setView(
-                            "list",
-                          )
-                        }
-                        className={`flex h-9 items-center gap-1.5 px-2.5 text-sm font-medium ${
-                          view ===
-                          "list"
-                            ? "bg-foreground text-background"
-                            : "bg-card hover:bg-muted"
-                        }`}
-                      >
-                        <List
-                          size={15}
-                          aria-hidden="true"
-                        />
-
-                        <span className="hidden xl:inline">
-                          List
-                        </span>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-                {q.isLoading && (
-                  <p className="p-4 text-sm text-muted-foreground">
-                    Loading events…
-                  </p>
                 )}
 
-                {q.isError && (
-                  <p className="p-4 text-sm text-muted-foreground">
-                    Events are unavailable right now.
-                  </p>
-                )}
-
-                {!q.isLoading &&
-                  !q.isError &&
-                  (showEnded
-                    ? endedEmpty
-                    : activeEmpty) && (
-                    <div className="p-6 text-center">
-                      <p className="text-sm font-semibold">
-                        {showEnded
-                          ? "No ended events"
-                          : "Nothing to show"}
-                      </p>
-
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {showEnded
-                          ? "There are no ended events matching the current filters."
-                          : "Nothing matches the current filters."}
-                      </p>
-
-                      {showEnded && (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setShowEnded(
-                              false,
-                            )
-                          }
-                          className="mt-3 h-9 rounded-md border border-border px-3 text-sm font-medium hover:bg-muted"
-                        >
-                          Back to events
-                        </button>
-                      )}
-
-                      {!showEnded &&
-                        filtersOn && (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setF(
-                                DEFAULT_FILTERS,
-                              )
-                            }
-                            className="mt-3 h-9 rounded-md border border-border px-3 text-sm font-medium hover:bg-muted"
-                          >
-                            Clear filters
-                          </button>
-                        )}
-                    </div>
-                  )}
-
-                {list}
-              </div>
-            </aside>
-
-            {/* =================================================
-                MOBILE / TABLET LIST
-                ================================================= */}
-
-            {view === "list" && (
-              <div className="absolute inset-0 z-10 flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm sm:rounded-2xl lg:hidden">
-                {/* MOBILE LIST HEADER */}
-
-                <div className="shrink-0 border-b border-border px-2.5 py-2 sm:px-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <p
-                      className="min-w-0 truncate text-sm font-semibold"
-                      aria-live="polite"
-                    >
-                      {q.isLoading
-                        ? "Loading events…"
-                        : showEnded
-                          ? `${endedEvents.length} ${
-                              endedEvents.length ===
-                              1
-                                ? "ended event"
-                                : "ended events"
-                            }`
-                          : ""}
-                    </p>
-
-                    <button
-                      type="button"
-                      aria-pressed={
-                        showEnded
-                      }
-                      onClick={() => {
-                        setShowEnded(
-                          (value) =>
-                            !value,
-                        );
-                        setSelectedId(
-                          null,
-                        );
-                      }}
-                      className={`flex h-9 shrink-0 items-center gap-1.5 rounded-md border px-2.5 text-sm font-medium ${
-                        showEnded
-                          ? "border-foreground bg-foreground text-background"
-                          : "border-border bg-card hover:bg-muted"
-                      }`}
-                    >
-                      <span>
-                        Ended
-                      </span>
-
-                      {endedEvents.length >
-                        0 && (
-                        <span
-                          className={`rounded-full px-1.5 text-xs ${
-                            showEnded
-                              ? "bg-background/20 text-background"
-                              : "bg-muted text-muted-foreground"
-                          }`}
-                        >
-                          {
-                            endedEvents.length
-                          }
-                        </span>
-                      )}
-                    </button>
+                {selected && (
+                  <div className="absolute bottom-3 right-3 z-[600] hidden w-[380px] max-w-[calc(100%-1.5rem)] lg:block">
+                    <EventPreview e={selected} onClose={() => setSelectedId(null)} />
                   </div>
-                </div>
-
-                {/* =================================================
-                    MOBILE SCROLL CONTAINER
-
-                    This is intentionally the ONLY element that
-                    handles vertical scrolling in the List view.
-                    ================================================= */}
-
-                <div
-                  className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain"
-                  style={{
-                    WebkitOverflowScrolling:
-                      "touch",
-                    touchAction:
-                      "pan-y",
-                  }}
-                >
-                  {q.isLoading && (
-                    <p className="p-6 text-center text-sm text-muted-foreground">
-                      Loading events…
-                    </p>
-                  )}
-
-                  {q.isError && (
-                    <div
-                      role="alert"
-                      className="p-6 text-center text-sm"
-                    >
-                      We couldn't load
-                      events.{" "}
-                      <button
-                        type="button"
-                        className="text-primary underline"
-                        onClick={() =>
-                          void q.refetch()
-                        }
-                      >
-                        Retry
-                      </button>
-                    </div>
-                  )}
-
-                  {!q.isLoading &&
-                    !q.isError &&
-                    (showEnded
-                      ? endedEmpty
-                      : activeEmpty) && (
-                      <div className="p-8 text-center text-sm">
-                        <p className="font-semibold">
-                          {showEnded
-                            ? "No ended events"
-                            : all?.length
-                              ? "No active events match these filters"
-                              : "No events yet"}
-                        </p>
-
-                        {showEnded ? (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setShowEnded(
-                                false,
-                              )
-                            }
-                            className="mt-2 text-primary underline"
-                          >
-                            Back to events
-                          </button>
-                        ) : (
-                          filtersOn && (
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setF(
-                                  DEFAULT_FILTERS,
-                                )
-                              }
-                              className="mt-2 text-primary underline"
-                            >
-                              Clear filters
-                            </button>
-                          )
-                        )}
-                      </div>
-                    )}
-
-                  {list}
-
-                  {/* Small bottom breathing room so the final
-                      event is never hidden against the viewport. */}
-
-                  <div
-                    aria-hidden="true"
-                    className="h-4"
-                  />
-                </div>
+                )}
               </div>
             )}
+          </div>
+
+          {/* Right: Theyyam Now. Fixed to the map's height on desktop; extra events scroll inside. */}
+          <div
+            className={`min-w-0 ${ROW_H} ${view === "list" ? "order-first" : "hidden"} lg:order-none lg:block`}
+          >
+            {panel}
+          </div>
+        </div>
+
+        {/* Row 2: forms on the left, a full calendar on the right. */}
+        <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_400px] xl:grid-cols-[minmax(0,1fr)_430px]">
+          <FormsSection events={all ?? []} now={now} onPick={pickForm} />
+
+          <div
+            id="calendar"
+            className="ke-anchor min-w-0 self-start overflow-hidden rounded-xl border border-gold-line bg-card"
+          >
+            <TheyyamCalendar
+              events={filtered}
+              now={now}
+              selectedDay={selectedDay}
+              onPickDay={pickDay}
+            />
           </div>
         </div>
       </main>
 
-      {/* ======================================================
-          MOBILE / TABLET EVENT BOTTOM SHEET
-          ====================================================== */}
-
-      {selected &&
-        view === "map" && (
-          <>
-            <div
-              className="fixed inset-0 z-[900] bg-black/20 backdrop-blur-[1px] lg:hidden"
-              onClick={() =>
-                setSelectedId(null)
-              }
-              aria-hidden="true"
-            />
-
-            <div className="lg:hidden">
-              <EventPreview
-                e={selected}
-                mobile
-                onClose={() =>
-                  setSelectedId(
-                    null,
-                  )
-                }
-              />
-            </div>
-          </>
-        )}
-
-      {/* ======================================================
-          FILTER SHEET
-          ====================================================== */}
+      {/* Phone and tablet: bottom sheet for the selected performance */}
+      {selected && view === "map" && !isDesktop && (
+        <EventPreview e={selected} mobile onClose={() => setSelectedId(null)} />
+      )}
 
       <FilterSheet
         open={filterOpen}
-        onOpenChange={
-          setFilterOpen
-        }
+        onOpenChange={setFilterOpen}
         filters={f}
         onApply={setF}
         count={countFor}
         hasLocation={!!user}
-        askLocation={
-          askLocation
-        }
+        askLocation={askLocation}
       />
 
-      {/* ======================================================
-          FOOTER
-          ====================================================== */}
-
-      <footer className="flex h-8 shrink-0 items-center justify-center border-t border-border bg-background">
-        <p className="text-[11px] text-muted-foreground">
-          © 2026 Kerala Events
-        </p>
-      </footer>
+      <SiteFooter />
     </div>
   );
 }

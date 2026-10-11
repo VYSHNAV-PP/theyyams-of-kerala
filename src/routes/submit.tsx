@@ -1,32 +1,31 @@
-import {
-  createFileRoute,
-  useNavigate,
-  ClientOnly,
-} from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate, ClientOnly } from "@tanstack/react-router";
 import {
   lazy,
   Suspense,
   useCallback,
   useEffect,
   useState,
+  type ChangeEvent,
+  type ReactNode,
 } from "react";
 import { z } from "zod";
-import { ImagePlus } from "lucide-react";
+import { ImagePlus, Plus, Trash2, Upload } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { KavuPicker } from "@/components/KavuPicker";
+import { addKavu, fetchKavus, type Kavu } from "@/lib/kavus";
 import { SiteHeader } from "@/components/SiteHeader";
-import { CategoryBadge } from "@/components/EventViews";
 import {
   CATEGORIES,
-  CATEGORY_META,
   DISTRICTS,
   SUBCATEGORIES,
-  addEvent,
-  fmtDate,
-  fmtTime,
+  addEvents,
+  istMs,
   shrinkImage,
+  todayIST,
   uploadPoster,
   type Category,
-  type EntryStatus,
   type NewEvent,
+  type SourceType,
 } from "@/lib/events";
 import { districtAt } from "@/lib/geo";
 
@@ -35,20 +34,14 @@ const EventMap = lazy(() => import("@/components/EventMap"));
 export const Route = createFileRoute("/submit")({
   head: () => ({
     meta: [
-      { title: "Post an event — Kerala Events" },
+      { title: "Post a Theyyam | Theyyams of Kerala" },
       {
         name: "description",
         content:
-          "Add your event to the Kerala Events map in a few steps.",
+          "Post one or more Theyyam performances at a temple or kavu. They go live straight away.",
       },
-      {
-        property: "og:title",
-        content: "Post an event — Kerala Events",
-      },
-      {
-        property: "og:description",
-        content: "Put your Kerala event on the community map.",
-      },
+      { property: "og:title", content: "Post a Theyyam | Theyyams of Kerala" },
+      { property: "og:description", content: "Put Theyyam performances on the community map." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
     ],
@@ -56,362 +49,244 @@ export const Route = createFileRoute("/submit")({
   component: Submit,
 });
 
-type Draft = {
-  title: string;
+/* ============================================================
+   TYPES
+   ============================================================ */
+
+/** One Theyyam at the place: several of these can share a temple, on different days or times. */
+type Perf = {
+  key: string;
   category: Category;
   subcategory: string;
-  description: string;
-  poster: File | null;
+  title: string;
   date: string;
   endDate: string;
   startTime: string;
   endTime: string;
+};
+
+type Place = {
+  /** The temple, kavu or tharavad name as shown. */
   venue: string;
+  /** Set when an existing kavu was chosen; null means a new kavu is added on post. */
+  kavuId: string | null;
   locality: string;
   district: string;
   pos: { lat: number; lng: number } | null;
-  entry: EntryStatus;
-  fee: string;
+  description: string;
+  poster: File | null;
   ticketUrl: string;
   instagram: string;
   website: string;
   contact: string;
   otherUrl: string;
+  sourceTypes: SourceType[];
 };
 
-const EMPTY: Draft = {
-  title: "",
-  category: "Sports",
+const newKey = () => Math.random().toString(36).slice(2, 9);
+
+const blankPerf = (from?: Perf): Perf => ({
+  key: newKey(),
+  category: from?.category ?? "Goddess",
   subcategory: "",
-  description: "",
-  poster: null,
-  date: "",
+  title: "",
+  // A second Theyyam at the same place is usually on the same day, so carry the date over.
+  date: from?.date ?? "",
   endDate: "",
   startTime: "",
   endTime: "",
+});
+
+const EMPTY_PLACE: Place = {
   venue: "",
+  kavuId: null,
   locality: "",
   district: "",
   pos: null,
-  entry: "free",
-  fee: "",
+  description: "",
+  poster: null,
   ticketUrl: "",
   instagram: "",
   website: "",
   contact: "",
   otherUrl: "",
+  sourceTypes: [],
 };
 
 type Errs = Record<string, string>;
 
-const STEPS = [
-  "Event details",
-  "Date & location",
-  "Additional information",
-  "Review & submit",
-];
+const sourceOptions = [
+  ["official", "Temple or committee page"],
+  ["social", "Social media"],
+  ["organizer", "Organiser"],
+  ["local", "Local knowledge"],
+] as const;
+
+const MAX_PERFORMANCES = 12;
+
+/* ============================================================
+   URL HELPERS
+   ============================================================ */
 
 function normUrl(s: string): string {
   const t = s.trim();
-
-  if (!t) {
-    return "";
-  }
-
-  return /^https?:\/\//i.test(t)
-    ? t.replace(/^http:/i, "https:")
-    : `https://${t}`;
+  if (!t) return "";
+  return /^https?:\/\//i.test(t) ? t.replace(/^http:/i, "https:") : `https://${t}`;
 }
 
 function normInsta(s: string): string {
   const t = s.trim().replace(/^@/, "");
-
-  if (!t) {
-    return "";
-  }
-
-  return /^https?:\/\//i.test(t)
-    ? normUrl(t)
-    : `https://instagram.com/${t}`;
+  if (!t) return "";
+  return /^https?:\/\//i.test(t) ? normUrl(t) : `https://instagram.com/${t}`;
 }
 
-const urlSchema = z
-  .string()
-  .url("Enter a valid link")
-  .max(300, "Link is too long");
+const urlSchema = z.string().url("Enter a valid link").max(300, "Link is too long");
 
-const today = () => {
-  const d = new Date();
-
-  return new Date(
-    d.getTime() - d.getTimezoneOffset() * 6e4,
-  )
-    .toISOString()
-    .slice(0, 10);
-};
-
-const msOf = (date: string, time: string) =>
-  new Date(`${date}T${time}`).getTime();
+/** Theyyams are often performed overnight: the end can fall on the next day. */
+const HOUR = 36e5;
 
 /* ============================================================
-   12-HOUR TIME PICKER
+   TIME PICKER
    ============================================================ */
 
 function splitTime(time: string) {
-  if (!time) {
-    return {
-      hour: "",
-      minute: "",
-      period: "AM" as "AM" | "PM",
-    };
-  }
-
+  if (!time) return { hour: "", minute: "", period: "PM" as "AM" | "PM" };
   const [h, m] = time.split(":");
   const hour24 = Number(h);
-  const period: "AM" | "PM" =
-    hour24 >= 12 ? "PM" : "AM";
-  const hour12 = hour24 % 12 || 12;
-
   return {
-    hour: String(hour12).padStart(2, "0"),
+    hour: String(hour24 % 12 || 12).padStart(2, "0"),
     minute: m ?? "00",
-    period,
+    period: (hour24 >= 12 ? "PM" : "AM") as "AM" | "PM",
   };
 }
 
-function to24Hour(
-  hour: string,
-  minute: string,
-  period: "AM" | "PM",
-) {
-  if (!hour || !minute) {
-    return "";
-  }
-
+function to24Hour(hour: string, minute: string, period: "AM" | "PM") {
+  if (!hour || !minute) return "";
   let h = Number(hour);
-
   if (period === "AM") {
-    if (h === 12) {
-      h = 0;
-    }
+    if (h === 12) h = 0;
   } else if (h !== 12) {
     h += 12;
   }
-
   return `${String(h).padStart(2, "0")}:${minute}`;
 }
+
+const box =
+  "h-11 rounded-md border border-input bg-raised text-sm text-foreground focus-visible:border-gold";
+const input = `${box} w-full px-3`;
 
 function TimePicker({
   value,
   onChange,
-  optional = false,
+  label,
 }: {
   value: string;
   onChange: (value: string) => void;
-  optional?: boolean;
+  label: string;
 }) {
   const initial = splitTime(value);
-
   const [hour, setHour] = useState(initial.hour);
   const [minute, setMinute] = useState(initial.minute);
-  const [period, setPeriod] = useState<"AM" | "PM">(
-    initial.period,
-  );
+  const [period, setPeriod] = useState<"AM" | "PM">(initial.period);
 
   useEffect(() => {
     const next = splitTime(value);
-
     setHour(next.hour);
     setMinute(next.minute);
     setPeriod(next.period);
   }, [value]);
 
-  const commit = (
-    nextHour: string,
-    nextMinute: string,
-    nextPeriod: "AM" | "PM",
-  ) => {
-    setHour(nextHour);
-    setMinute(nextMinute);
-    setPeriod(nextPeriod);
-
-    if (!nextHour || !nextMinute) {
+  const commit = (h: string, m: string, p: "AM" | "PM") => {
+    setHour(h);
+    setMinute(m);
+    setPeriod(p);
+    if (!h || !m) {
       onChange("");
       return;
     }
-
-    const h = Number(nextHour);
-    const m = Number(nextMinute);
-
-    if (
-      !Number.isInteger(h) ||
-      h < 1 ||
-      h > 12 ||
-      !Number.isInteger(m) ||
-      m < 0 ||
-      m > 59
-    ) {
+    const hn = Number(h);
+    const mn = Number(m);
+    if (!Number.isInteger(hn) || hn < 1 || hn > 12 || !Number.isInteger(mn) || mn < 0 || mn > 59)
       return;
-    }
-
-    onChange(
-      to24Hour(
-        String(h),
-        String(m).padStart(2, "0"),
-        nextPeriod,
-      ),
-    );
+    onChange(to24Hour(String(hn), String(mn).padStart(2, "0"), p));
   };
 
-  const handleHourChange = (
-    e: React.ChangeEvent<HTMLInputElement>,
-  ) => {
+  const handleHour = (e: ChangeEvent<HTMLInputElement>) => {
     const next = e.target.value;
-
-    if (next === "") {
-      commit("", minute, period);
-      return;
-    }
-
-    if (!/^\d{1,2}$/.test(next)) {
-      return;
-    }
-
+    if (next === "") return commit("", minute, period);
+    if (!/^\d{1,2}$/.test(next)) return;
     const n = Number(next);
-
-    if (n < 1 || n > 12) {
-      return;
-    }
-
+    if (n < 1 || n > 12) return;
     commit(next, minute, period);
   };
 
-  const handleMinuteChange = (
-    e: React.ChangeEvent<HTMLInputElement>,
-  ) => {
+  const handleMinute = (e: ChangeEvent<HTMLInputElement>) => {
     const next = e.target.value;
-
-    if (next === "") {
-      commit(hour, "", period);
-      return;
-    }
-
-    if (!/^\d{1,2}$/.test(next)) {
-      return;
-    }
-
+    if (next === "") return commit(hour, "", period);
+    if (!/^\d{1,2}$/.test(next)) return;
     const n = Number(next);
-
-    if (n < 0 || n > 59) {
-      return;
-    }
-
+    if (n < 0 || n > 59) return;
     commit(hour, next, period);
   };
 
-  const handleHourBlur = () => {
-    if (!hour) {
-      return;
-    }
-
+  const blurHour = () => {
+    if (!hour) return;
     const h = Number(hour);
-
     if (h >= 1 && h <= 12) {
-      const formatted = String(h).padStart(2, "0");
-
-      setHour(formatted);
-
-      if (minute) {
-        onChange(
-          to24Hour(
-            formatted,
-            minute.padStart(2, "0"),
-            period,
-          ),
-        );
-      }
+      const f = String(h).padStart(2, "0");
+      setHour(f);
+      if (minute) onChange(to24Hour(f, minute.padStart(2, "0"), period));
     }
   };
 
-  const handleMinuteBlur = () => {
-    if (!minute) {
-      return;
-    }
-
+  const blurMinute = () => {
+    if (!minute) return;
     const m = Number(minute);
-
     if (m >= 0 && m <= 59) {
-      const formatted = String(m).padStart(2, "0");
-
-      setMinute(formatted);
-
-      if (hour) {
-        onChange(
-          to24Hour(
-            hour.padStart(2, "0"),
-            formatted,
-            period,
-          ),
-        );
-      }
-    }
-  };
-
-  const handlePeriodChange = (
-    e: React.ChangeEvent<HTMLSelectElement>,
-  ) => {
-    const next = e.target.value as "AM" | "PM";
-
-    setPeriod(next);
-
-    if (hour && minute) {
-      onChange(
-        to24Hour(
-          hour,
-          minute.padStart(2, "0"),
-          next,
-        ),
-      );
+      const f = String(m).padStart(2, "0");
+      setMinute(f);
+      if (hour) onChange(to24Hour(hour.padStart(2, "0"), f, period));
     }
   };
 
   return (
-    <div className="flex items-center gap-1.5">
+    <div className="flex items-center gap-1.5" role="group" aria-label={label}>
       <input
         type="number"
-        aria-label="Hour"
+        aria-label={`${label}, hour`}
         min={1}
         max={12}
         step={1}
         inputMode="numeric"
-        placeholder={optional ? "Hour" : "HH"}
+        placeholder="HH"
         value={hour}
-        onChange={handleHourChange}
-        onBlur={handleHourBlur}
-        className="h-11 w-full min-w-0 rounded-md border border-input bg-background px-2 text-center text-sm focus-visible:outline-2 focus-visible:outline-ring"
+        onChange={handleHour}
+        onBlur={blurHour}
+        className={`${box} min-w-0 flex-1 px-1 text-center`}
       />
-
-      <span className="shrink-0 text-lg">:</span>
-
+      <span className="shrink-0 text-lg text-muted-foreground">:</span>
       <input
         type="number"
-        aria-label="Minute"
+        aria-label={`${label}, minute`}
         min={0}
         max={59}
         step={1}
         inputMode="numeric"
-        placeholder={optional ? "Min" : "MM"}
+        placeholder="MM"
         value={minute}
-        onChange={handleMinuteChange}
-        onBlur={handleMinuteBlur}
-        className="h-11 w-full min-w-0 rounded-md border border-input bg-background px-2 text-center text-sm focus-visible:outline-2 focus-visible:outline-ring"
+        onChange={handleMinute}
+        onBlur={blurMinute}
+        className={`${box} min-w-0 flex-1 px-1 text-center`}
       />
-
       <select
-        aria-label="AM or PM"
+        aria-label={`${label}, AM or PM`}
         value={period}
-        onChange={handlePeriodChange}
-        className="h-11 w-20 shrink-0 rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-2 focus-visible:outline-ring"
+        onChange={(e) => {
+          const next = e.target.value as "AM" | "PM";
+          setPeriod(next);
+          if (hour && minute) onChange(to24Hour(hour, minute.padStart(2, "0"), next));
+        }}
+        className={`${box} w-[4.5rem] shrink-0 px-2`}
       >
         <option value="AM">AM</option>
         <option value="PM">PM</option>
@@ -424,265 +299,132 @@ function TimePicker({
    VALIDATION
    ============================================================ */
 
-function validate(
-  step: number,
-  d: Draft,
-): Errs {
+const chk = (
+  e: Errs,
+  key: string,
+  result: { success: true } | { success: false; error: { issues: { message: string }[] } },
+) => {
+  if (!result.success) e[key] = result.error.issues[0]?.message ?? "Invalid value";
+};
+
+function validate(place: Place, perfs: Perf[]): Errs {
   const e: Errs = {};
 
-  const chk = (
-    key: string,
-    r:
-      | { success: true }
-      | {
-          success: false;
-          error: {
-            issues: {
-              message: string;
-            }[];
-          };
-        },
-  ) => {
-    if (!r.success) {
-      e[key] =
-        r.error.issues[0]?.message ??
-        "Invalid value";
-    }
-  };
-
-  if (step === 0) {
+  chk(
+    e,
+    "venue",
+    z
+      .string()
+      .trim()
+      .min(2, "Enter the temple or kavu")
+      .max(150, "Too long")
+      .safeParse(place.venue),
+  );
+  if (!place.kavuId)
     chk(
-      "title",
-      z
-        .string()
-        .trim()
-        .min(
-          3,
-          "Give the event a name (3+ characters)",
-        )
-        .max(
-          100,
-          "Keep the name under 100 characters",
-        )
-        .safeParse(d.title),
-    );
-
-    chk(
-      "subcategory",
-      z
-        .string()
-        .trim()
-        .min(
-          2,
-          d.category === "Other"
-            ? "Describe the type of event"
-            : "Choose a subcategory",
-        )
-        .max(50, "Too long")
-        .safeParse(d.subcategory),
-    );
-
-    chk(
-      "description",
-      z
-        .string()
-        .trim()
-        .min(
-          10,
-          "Add a short description (10+ characters)",
-        )
-        .max(
-          300,
-          "Keep it under 300 characters",
-        )
-        .safeParse(d.description),
-    );
-
-    if (
-      d.poster &&
-      ![
-        "image/jpeg",
-        "image/png",
-        "image/webp",
-      ].includes(d.poster.type)
-    ) {
-      e["poster"] =
-        "Poster must be a JPG, PNG or WebP image";
-    } else if (
-      d.poster &&
-      d.poster.size > 10 * 1024 * 1024
-    ) {
-      e["poster"] =
-        "Poster must be under 10 MB";
-    }
-  }
-
-  if (step === 1) {
-    if (!d.date) {
-      e["date"] = "Pick a date";
-    } else if (d.date < today()) {
-      e["date"] =
-        "Date can't be in the past";
-    }
-
-    if (!d.startTime) {
-      e["startTime"] =
-        "Pick a start time";
-    }
-
-    if (
-      d.endDate &&
-      d.endDate < d.date
-    ) {
-      e["endDate"] =
-        "End date can't be before the start date";
-    }
-
-    const endDate =
-      d.endDate || d.date;
-
-    if (
-      d.endTime &&
-      d.startTime &&
-      d.date &&
-      msOf(
-        endDate,
-        d.endTime,
-      ) <=
-        msOf(
-          d.date,
-          d.startTime,
-        )
-    ) {
-      e["endTime"] =
-        "End time must be after the start time";
-    }
-
-    if (
-      !e["date"] &&
-      !e["startTime"] &&
-      !e["endTime"] &&
-      d.date &&
-      d.startTime
-    ) {
-      const end = d.endTime
-        ? msOf(
-            endDate,
-            d.endTime,
-          )
-        : msOf(
-            d.date,
-            d.startTime,
-          ) +
-          3 * 36e5;
-
-      if (end < Date.now()) {
-        e["startTime"] =
-          "This event would already be over";
-      }
-    }
-
-    chk(
-      "venue",
-      z
-        .string()
-        .trim()
-        .min(
-          2,
-          "Enter the venue",
-        )
-        .max(
-          150,
-          "Too long",
-        )
-        .safeParse(d.venue),
-    );
-
-    chk(
+      e,
       "locality",
       z
         .string()
         .trim()
-        .min(
-          2,
-          "Enter the town or locality",
-        )
-        .max(
-          100,
-          "Too long",
-        )
-        .safeParse(d.locality),
+        .min(2, "Enter the town or locality")
+        .max(100, "Too long")
+        .safeParse(place.locality),
     );
-
-    if (!d.district) {
-      e["district"] =
-        "Choose a district";
-    }
-
-    if (!d.pos) {
-      e["pos"] =
-        "Tap the map to place the event";
-    }
+  if (!place.kavuId) {
+    if (!place.district) e["district"] = "Choose a district";
+    if (!place.pos) e["pos"] = "Tap the map to place the temple or kavu";
   }
 
-  if (step === 2) {
-    if (d.entry === "paid") {
-      chk(
-        "fee",
-        z
-          .string()
-          .trim()
-          .min(
-            1,
-            "Enter the entry fee",
-          )
-          .max(
-            60,
-            "Too long",
-          )
-          .safeParse(d.fee),
-      );
-    }
+  chk(
+    e,
+    "description",
+    z
+      .string()
+      .trim()
+      .min(10, "Add a short description (10+ characters)")
+      .max(300, "Keep it under 300 characters")
+      .safeParse(place.description),
+  );
 
-    for (
-      const [k, v] of [
-        [
-          "ticketUrl",
-          normUrl(d.ticketUrl),
-        ],
-        [
-          "website",
-          normUrl(d.website),
-        ],
-        [
-          "otherUrl",
-          normUrl(d.otherUrl),
-        ],
-        [
-          "instagram",
-          normInsta(d.instagram),
-        ],
-      ] as const
+  const seen = new Set<string>();
+
+  perfs.forEach((p, i) => {
+    const k = (f: string) => `p${i}.${f}`;
+
+    chk(
+      e,
+      k("subcategory"),
+      z
+        .string()
+        .trim()
+        .min(2, p.category === "Other" ? "Say which form it is" : "Choose the form")
+        .max(50, "Too long")
+        .safeParse(p.subcategory),
+    );
+    chk(
+      e,
+      k("title"),
+      z
+        .string()
+        .trim()
+        .min(3, "Give the performance a name (3+ characters)")
+        .max(100, "Keep the name under 100 characters")
+        .safeParse(p.title),
+    );
+
+    if (!p.date) e[k("date")] = "Pick a date";
+    else if (p.date < todayIST()) e[k("date")] = "The date can't be in the past";
+
+    if (!p.startTime) e[k("startTime")] = "Pick a start time";
+
+    if (p.endDate && p.endDate < p.date) e[k("endDate")] = "End date can't be before the start";
+
+    const endDate = p.endDate || p.date;
+
+    if (
+      p.endTime &&
+      p.startTime &&
+      p.date &&
+      istMs(endDate, p.endTime) <= istMs(p.date, p.startTime)
     ) {
-      if (v) {
-        chk(
-          k,
-          urlSchema.safeParse(v),
-        );
-      }
+      e[k("endTime")] =
+        "End must be after the start. For overnight, set the end date to the next day.";
     }
 
-    if (d.contact.length > 100) {
-      e["contact"] =
-        "Too long";
+    if (!e[k("date")] && !e[k("startTime")] && !e[k("endTime")] && p.date && p.startTime) {
+      const end = p.endTime ? istMs(endDate, p.endTime) : istMs(p.date, p.startTime) + 3 * HOUR;
+      if (end < Date.now()) e[k("startTime")] = "This performance would already be over";
+
+      const id = `${p.subcategory.trim().toLowerCase()}|${p.date}|${p.startTime}`;
+      if (seen.has(id)) e[k("startTime")] = "Same Theyyam, day and time as another one above";
+      seen.add(id);
     }
+  });
+
+  const links = [
+    ["ticketUrl", normUrl(place.ticketUrl)],
+    ["website", normUrl(place.website)],
+    ["otherUrl", normUrl(place.otherUrl)],
+    ["instagram", normInsta(place.instagram)],
+  ] as const;
+  for (const [key, value] of links) {
+    if (value) chk(e, key, urlSchema.safeParse(value));
+  }
+  if (place.contact.length > 100) e["contact"] = "Too long";
+
+  if (place.poster) {
+    if (!["image/jpeg", "image/png", "image/webp"].includes(place.poster.type))
+      e["poster"] = "The image must be a JPG, PNG or WebP";
+    else if (place.poster.size > 10 * 1024 * 1024) e["poster"] = "The image must be under 10 MB";
   }
 
   return e;
 }
 
-const input =
-  "h-11 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-2 focus-visible:outline-ring";
+/* ============================================================
+   SMALL PARTS
+   ============================================================ */
 
 function Field({
   label,
@@ -691,29 +433,17 @@ function Field({
   children,
 }: {
   label: string;
-  error: string | undefined;
-  hint?: string;
-  children: React.ReactNode;
+  error?: string | undefined;
+  hint?: string | undefined;
+  children: ReactNode;
 }) {
   return (
     <label className="block text-sm">
-      <span className="mb-1 block font-medium">
-        {label}
-      </span>
-
+      <span className="mb-1 block font-medium">{label}</span>
       {children}
-
-      {hint && !error && (
-        <span className="mt-1 block text-xs text-muted-foreground">
-          {hint}
-        </span>
-      )}
-
+      {hint && !error && <span className="mt-1 block text-xs text-muted-foreground">{hint}</span>}
       {error && (
-        <span
-          role="alert"
-          className="mt-1 block text-xs text-destructive"
-        >
+        <span role="alert" className="mt-1 block text-xs text-destructive">
           {error}
         </span>
       )}
@@ -721,143 +451,242 @@ function Field({
   );
 }
 
+const pill = (selected: boolean) =>
+  `tap h-9 rounded-md border px-3 text-sm font-medium ${
+    selected
+      ? "border-gold bg-accent text-gold"
+      : "border-border text-muted-foreground hover:border-gold-line hover:text-foreground"
+  }`;
+
+function SectionTitle({ children }: { children: ReactNode }) {
+  return (
+    <h2 className="font-display text-[15px] font-semibold uppercase tracking-[0.08em] text-gold">
+      {children}
+    </h2>
+  );
+}
+
 /* ============================================================
-   SUBMIT
+   ONE PERFORMANCE
+   ============================================================ */
+
+function PerfCard({
+  index,
+  perf,
+  errs,
+  canRemove,
+  onChange,
+  onRemove,
+}: {
+  index: number;
+  perf: Perf;
+  errs: Errs;
+  canRemove: boolean;
+  onChange: (patch: Partial<Perf>) => void;
+  onRemove: () => void;
+}) {
+  const err = (f: string) => errs[`p${index}.${f}`];
+  const subs = SUBCATEGORIES[perf.category];
+
+  /** Picking a form suggests a name, unless the visitor has already written their own. */
+  function chooseForm(name: string) {
+    const suggest = (n: string) => (/theyyam/i.test(n) ? n : `${n} Theyyam`);
+    const wasAuto = !perf.title || (perf.subcategory && perf.title === suggest(perf.subcategory));
+    const isOther = /^other /i.test(name);
+    onChange({
+      subcategory: name,
+      title: wasAuto ? (isOther ? "" : suggest(name)) : perf.title,
+    });
+  }
+
+  return (
+    <fieldset className="rounded-xl border border-border bg-background/40 p-3.5 sm:p-4">
+      <legend className="sr-only">Theyyam {index + 1}</legend>
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <h3 className="font-display text-sm font-semibold uppercase tracking-[0.08em]">
+          Theyyam {index + 1}
+        </h3>
+        {canRemove && (
+          <button
+            type="button"
+            onClick={onRemove}
+            className="tap inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-semibold text-muted-foreground hover:bg-accent hover:text-destructive"
+          >
+            <Trash2 size={13} aria-hidden="true" />
+            Remove
+          </button>
+        )}
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label="Type of Theyyam">
+          <select
+            className={input}
+            value={perf.category}
+            onChange={(e) => onChange({ category: e.target.value as Category, subcategory: "" })}
+          >
+            {CATEGORIES.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+        </Field>
+
+        {perf.category === "Other" ? (
+          <Field label="Which form is it?" error={err("subcategory")}>
+            <input
+              className={input}
+              value={perf.subcategory}
+              maxLength={50}
+              onChange={(e) => onChange({ subcategory: e.target.value })}
+              placeholder="e.g. Thira, Kaliyattam"
+            />
+          </Field>
+        ) : (
+          <Field label="Form" error={err("subcategory")}>
+            <select
+              className={input}
+              value={perf.subcategory}
+              onChange={(e) => chooseForm(e.target.value)}
+            >
+              <option value="">Select a form…</option>
+              {subs.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+          </Field>
+        )}
+
+        <div className="sm:col-span-2">
+          <Field label="Name of the performance" error={err("title")}>
+            <input
+              className={input}
+              value={perf.title}
+              maxLength={100}
+              onChange={(e) => onChange({ title: e.target.value })}
+              autoComplete="off"
+              placeholder="e.g. Muchilottu Bhagavathi"
+            />
+          </Field>
+        </div>
+
+        <Field label="Date" error={err("date")}>
+          <input
+            type="date"
+            className={input}
+            min={todayIST()}
+            value={perf.date}
+            onChange={(e) => onChange({ date: e.target.value })}
+          />
+        </Field>
+        <Field label="Start time" error={err("startTime")}>
+          <TimePicker
+            label="Start time"
+            value={perf.startTime}
+            onChange={(v) => onChange({ startTime: v })}
+          />
+        </Field>
+        <Field label="End date (optional, if overnight)" error={err("endDate")}>
+          <input
+            type="date"
+            className={input}
+            min={perf.date || todayIST()}
+            value={perf.endDate}
+            onChange={(e) => onChange({ endDate: e.target.value })}
+          />
+        </Field>
+        <Field label="End time (optional)" error={err("endTime")}>
+          <TimePicker
+            label="End time"
+            value={perf.endTime}
+            onChange={(v) => onChange({ endTime: v })}
+          />
+        </Field>
+      </div>
+    </fieldset>
+  );
+}
+
+/* ============================================================
+   PAGE
    ============================================================ */
 
 function Submit() {
   const nav = useNavigate();
+  const queryClient = useQueryClient();
+  const kavuQuery = useQuery({ queryKey: ["kavus"], queryFn: fetchKavus, staleTime: 60_000 });
+  const kavus = kavuQuery.data ?? [];
+  const [place, setPlace] = useState<Place>(EMPTY_PLACE);
+  const [perfs, setPerfs] = useState<Perf[]>(() => [blankPerf()]);
+  const [errs, setErrs] = useState<Errs>({});
+  const [busy, setBusy] = useState(false);
+  const [fail, setFail] = useState("");
+  const [preview, setPreview] = useState<string | null>(null);
 
-  const [step, setStep] =
-    useState(0);
+  const setP = (patch: Partial<Place>) => setPlace((x) => ({ ...x, ...patch }));
 
-  const [d, setD] =
-    useState<Draft>(EMPTY);
+  const selectedKavu = place.kavuId ? (kavus.find((k) => k.id === place.kavuId) ?? null) : null;
 
-  const [errs, setErrs] =
-    useState<Errs>({});
+  /** Choosing a kavu fills in its name, town, district and position from the database. */
+  const chooseKavu = (k: Kavu) => {
+    setP({
+      venue: k.name,
+      kavuId: k.id,
+      locality: k.locality,
+      district: k.district,
+      pos: { lat: k.lat, lng: k.lng },
+    });
+    setErrs((x) => ({ ...x, venue: "", locality: "", district: "", pos: "" }));
+  };
 
-  const [busy, setBusy] =
-    useState(false);
+  /** Back to typing: the town, district and pin are free to be set again. */
+  const changeKavu = () => setP({ kavuId: null, locality: "", district: "", pos: null });
 
-  const [fail, setFail] =
-    useState("");
-
-  const [preview, setPreview] =
-    useState<string | null>(null);
-
-  const set = (
-    p: Partial<Draft>,
-  ) =>
-    setD((x) => ({
-      ...x,
-      ...p,
-    }));
+  const noopPick = useCallback(() => {}, []);
+  const setPerf = (key: string, patch: Partial<Perf>) =>
+    setPerfs((list) => list.map((p) => (p.key === key ? { ...p, ...patch } : p)));
 
   useEffect(() => {
-    if (!d.poster) {
+    if (!place.poster) {
       setPreview(null);
       return;
     }
+    const url = URL.createObjectURL(place.poster);
+    setPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [place.poster]);
 
-    const u =
-      URL.createObjectURL(
-        d.poster,
-      );
-
-    setPreview(u);
-
-    return () =>
-      URL.revokeObjectURL(u);
-  }, [d.poster]);
-
-  const onPick = useCallback(
-    (
-      lat: number,
-      lng: number,
-    ) => {
-      setD((x) => ({
-        ...x,
-        pos: {
-          lat,
-          lng,
-        },
-      }));
-
-      void districtAt(
-        lat,
-        lng,
-      ).then((dist) => {
-        if (dist) {
-          setD((x) => ({
-            ...x,
-            district: dist,
-          }));
-
-          setErrs((x) => ({
-            ...x,
-            pos: "",
-            district: "",
-          }));
-        } else {
-          setErrs((x) => ({
-            ...x,
-            pos:
-              "That spot is outside Kerala — choose a place inside a district.",
-          }));
-        }
-      });
-    },
-    [],
-  );
-
-  function next() {
-    const e =
-      validate(
-        step,
-        d,
-      );
-
-    setErrs(e);
-
-    if (
-      Object.keys(e).length
-    ) {
-      return;
-    }
-
-    setStep(
-      step + 1,
-    );
-
-    window.scrollTo({
-      top: 0,
+  const onPick = useCallback((lat: number, lng: number) => {
+    setPlace((x) => ({ ...x, pos: { lat, lng } }));
+    void districtAt(lat, lng).then((district) => {
+      if (district) {
+        setPlace((x) => ({ ...x, district }));
+        setErrs((x) => ({ ...x, pos: "", district: "" }));
+      } else {
+        // Outside Kerala: drop the pin as well, so the form can't post it.
+        setPlace((x) => ({ ...x, pos: null, district: "" }));
+        setErrs((x) => ({
+          ...x,
+          pos: "That spot is outside Kerala. Choose a place inside a district.",
+        }));
+      }
     });
-  }
+  }, []);
 
   async function submit() {
-    const e =
-      [0, 1, 2].reduce<Errs>(
-        (a, s) => ({
-          ...a,
-          ...validate(
-            s,
-            d,
-          ),
-        }),
-        {},
+    const errors = validate(place, perfs);
+    setErrs(errors);
+
+    if (Object.keys(errors).length > 0 || !place.pos) {
+      setFail("Some details need fixing. Check the highlighted fields.");
+      requestAnimationFrame(() =>
+        document
+          .querySelector('[role="alert"]')
+          ?.scrollIntoView({ behavior: "smooth", block: "center" }),
       );
-
-    if (
-      Object.keys(e).length ||
-      !d.pos
-    ) {
-      setErrs(e);
-
-      setFail(
-        "Some details need fixing — go back and check the highlighted fields.",
-      );
-
       return;
     }
 
@@ -865,978 +694,404 @@ function Submit() {
     setFail("");
 
     try {
-      /*
-       * IMPORTANT:
-       *
-       * Manual poster always has priority.
-       *
-       * If the user uploaded a poster, upload it first.
-       *
-       * If there is no poster, imageUrl remains null.
-       *
-       * We DO NOT call findEventImage() here.
-       *
-       * Automatic image discovery must happen asynchronously
-       * in the backend after the event is created.
-       */
+      // The kavu comes first: if it can't be saved, nothing else is written.
+      let kavu: Kavu | undefined;
+      if (place.kavuId) {
+        kavu = kavus.find((k) => k.id === place.kavuId);
+      } else {
+        kavu = await addKavu({
+          name: place.venue.trim(),
+          locality: place.locality.trim(),
+          district: place.district,
+          lat: place.pos!.lat,
+          lng: place.pos!.lng,
+        });
+        void queryClient.invalidateQueries({ queryKey: ["kavus"] });
+      }
+      if (!kavu) throw new Error("The kavu could not be found");
 
-      const imageUrl = d.poster
-        ? await uploadPoster(
-            await shrinkImage(
-              d.poster,
-            ),
-          )
-        : null;
+      const imageUrl = place.poster ? await uploadPoster(await shrinkImage(place.poster)) : null;
+      const sources: SourceType[] = place.poster
+        ? Array.from(new Set<SourceType>([...place.sourceTypes, "poster"]))
+        : place.sourceTypes;
 
-      const id =
-        d.title
+      const list: NewEvent[] = perfs.map((p) => {
+        const slug = p.title
           .toLowerCase()
-          .replace(
-            /[^a-z0-9]+/g,
-            "-",
-          )
-          .replace(
-            /^-|-$/g,
-            "",
-          )
-          .slice(
-            0,
-            60,
-          ) +
-        "-" +
-        Math.random()
-          .toString(36)
-          .slice(2, 7);
-
-      const ev: NewEvent = {
-        id,
-        title:
-          d.title.trim(),
-        category:
-          d.category,
-        subcategory:
-          d.subcategory.trim(),
-        description:
-          d.description.trim(),
-        date:
-          d.date,
-        endDate:
-          d.endDate ||
-          d.date,
-        startTime:
-          d.startTime,
-        endTime:
-          d.endTime ||
-          null,
-        venue:
-          d.venue.trim(),
-        locality:
-          d.locality.trim(),
-        district:
-          d.district,
-        lat:
-          d.pos.lat,
-        lng:
-          d.pos.lng,
-        entry:
-          d.entry,
-        fee:
-          d.entry === "paid"
-            ? d.fee.trim()
-            : null,
-        contact:
-          d.contact.trim() ||
-          null,
-        ticketUrl:
-          normUrl(
-            d.ticketUrl,
-          ) || null,
-        instagram:
-          normInsta(
-            d.instagram,
-          ) || null,
-        website:
-          normUrl(
-            d.website,
-          ) || null,
-        otherUrl:
-          normUrl(
-            d.otherUrl,
-          ) || null,
-
-        /*
-         * Manual image only.
-         *
-         * Automatic image discovery happens later in the
-         * backend and updates the event row asynchronously.
-         */
-        imageUrl,
-
-        /*
-         * Automatic image candidates are discovered after
-         * the event is created.
-         */
-        imageCandidates: [],
-      };
-
-      /*
-       * Create the event immediately.
-       *
-       * There is intentionally NO await findEventImage()
-       * or other image-search operation here.
-       */
-      await addEvent(ev);
-
-      /*
-       * Once inserted, navigate immediately to the event page.
-       *
-       * The page can initially show its normal fallback.
-       * When the backend later updates image_url/image_candidates,
-       * the frontend can display the discovered image.
-       */
-      await nav({
-        to: "/event/$id",
-        params: {
-          id,
-        },
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-|-$/g, "")
+          .slice(0, 60);
+        return {
+          id: `${slug || "theyyam"}-${Math.random().toString(36).slice(2, 7)}`,
+          title: p.title.trim(),
+          category: p.category,
+          subcategory: p.subcategory.trim(),
+          description: place.description.trim(),
+          date: p.date,
+          endDate: p.endDate || p.date,
+          startTime: p.startTime,
+          endTime: p.endTime || null,
+          venue: kavu.name,
+          kavuId: kavu.id,
+          locality: kavu.locality,
+          district: kavu.district,
+          lat: kavu.lat,
+          lng: kavu.lng,
+          // Theyyam performances are open to all; the database fields stay for older rows.
+          entry: "free",
+          fee: null,
+          registrationStart: null,
+          registrationEnd: null,
+          contact: place.contact.trim() || null,
+          ticketUrl: normUrl(place.ticketUrl) || null,
+          instagram: normInsta(place.instagram) || null,
+          website: normUrl(place.website) || null,
+          otherUrl: normUrl(place.otherUrl) || null,
+          sourceTypes: sources,
+          imageUrl,
+          imageCandidates: [],
+        };
       });
-    } catch {
-      setFail(
-        "We couldn't publish your event. Check your connection and try again — your details are still here.",
-      );
 
+      // All performances are saved together in one request.
+      await addEvents(list);
+
+      const first = list[0];
+      if (list.length === 1 && first) {
+        await nav({ to: "/event/$id", params: { id: first.id } });
+      } else {
+        await nav({ to: "/", search: { q: place.venue.trim() } });
+      }
+    } catch (error) {
+      console.error("Submission failed:", error);
+      setFail(
+        "We couldn't publish these performances. Check your connection and try again. Your details are still here.",
+      );
       setBusy(false);
     }
   }
 
-  const subs =
-    SUBCATEGORIES[
-      d.category
-    ];
-
   return (
-    <div className="min-h-dvh bg-background">
+    <div className="flex min-h-dvh flex-col bg-background">
       <SiteHeader />
 
-      <main className="mx-auto max-w-2xl px-4 pb-28 pt-4">
-        <p className="text-xs font-medium text-muted-foreground">
-          Step {step + 1} of{" "}
-          {STEPS.length}
-        </p>
-
-        <h1 className="text-xl font-bold">
-          {STEPS[step]}
-        </h1>
-
+      <main className="relative flex-1">
+        {/* The portrait fills the page behind the content, under a low dark gradient */}
         <div
-          className="mt-2 h-1.5 overflow-hidden rounded bg-muted"
-          role="progressbar"
-          aria-valuemin={1}
-          aria-valuemax={4}
-          aria-valuenow={
-            step + 1
-          }
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-y-0 left-0 w-full overflow-hidden lg:w-[42%]"
         >
+          <picture>
+            <source srcSet="/post-theyyam.webp" type="image/webp" />
+            <img
+              src="/post-theyyam.jpg"
+              alt=""
+              width={1024}
+              height={1536}
+              className="h-full w-full object-cover object-[30%_18%]"
+            />
+          </picture>
           <div
-            className="h-full bg-primary transition-all"
+            className="absolute inset-0"
             style={{
-              width: `${
-                ((step + 1) / 4) *
-                100
-              }%`,
+              backgroundImage:
+                "linear-gradient(to bottom, rgba(8,11,14,0.55), rgba(8,11,14,0.3), rgba(8,11,14,0.75))",
             }}
           />
         </div>
 
-        <div className="mt-5 space-y-4">
-          {step === 0 && (
-            <>
-              <Field
-                label="Event name"
-                error={
-                  errs["title"]
-                }
-              >
-                <input
-                  className={input}
-                  value={d.title}
-                  maxLength={100}
-                  onChange={(e) =>
-                    set({
-                      title:
-                        e.target.value,
-                    })
-                  }
-                  autoComplete="off"
-                />
-              </Field>
+        <div className="relative mx-auto grid w-full max-w-[1400px] gap-6 px-3 py-5 sm:px-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:py-8">
+          {/* Right: heading and form. The left column is left open so the portrait shows. */}
+          <div className="flex min-w-0 flex-col gap-4 lg:col-start-2">
+            <div>
+              <h1 className="ke-title text-[22px] leading-tight text-primary sm:text-[28px] lg:text-[32px]">
+                Post a Theyyam performance
+              </h1>
+              <p className="mt-2 max-w-2xl text-[14px] leading-relaxed text-muted-foreground sm:text-[15px]">
+                Share an upcoming or ongoing Theyyam. If a temple has several Theyyams, add them all
+                here with their own days and times.
+              </p>
+            </div>
 
-              <div className="text-sm">
-                <span className="mb-1 block font-medium">
-                  Category
-                </span>
-
-                <div
-                  className="flex flex-wrap gap-2"
-                  role="group"
-                  aria-label="Category"
-                >
-                  {CATEGORIES.map(
-                    (c) => (
-                      <button
-                        key={c}
-                        type="button"
-                        aria-pressed={
-                          d.category ===
-                          c
-                        }
-                        onClick={() =>
-                          set({
-                            category:
-                              c,
-                            subcategory:
-                              "",
-                          })
-                        }
-                        style={
-                          d.category ===
-                          c
-                            ? {
-                                background:
-                                  CATEGORY_META[
-                                    c
-                                  ].hex,
-                                borderColor:
-                                  CATEGORY_META[
-                                    c
-                                  ].hex,
-                                color:
-                                  "#fff",
-                              }
-                            : undefined
-                        }
-                        className="flex h-10 items-center gap-1 rounded-full border border-border px-3 text-sm focus-visible:outline-2 focus-visible:outline-ring"
-                      >
-                        <span aria-hidden="true">
-                          {
-                            CATEGORY_META[
-                              c
-                            ].icon
-                          }
-                        </span>
-
-                        {c}
-                      </button>
-                    ),
-                  )}
-                </div>
-              </div>
-
-              {d.category ===
-              "Other" ? (
-                <Field
-                  label="What kind of event is it?"
-                  error={
-                    errs[
-                      "subcategory"
-                    ]
-                  }
-                >
-                  <input
-                    className={input}
-                    value={
-                      d.subcategory
-                    }
-                    maxLength={50}
-                    onChange={(e) =>
-                      set({
-                        subcategory:
-                          e.target.value,
-                      })
-                    }
-                    placeholder="e.g. Book fair, Blood donation camp"
-                  />
-                </Field>
-              ) : (
-                <Field
-                  label="Subcategory"
-                  error={
-                    errs[
-                      "subcategory"
-                    ]
-                  }
-                >
-                  <select
-                    className={input}
-                    value={
-                      d.subcategory
-                    }
-                    onChange={(e) =>
-                      set({
-                        subcategory:
-                          e.target.value,
-                      })
-                    }
-                  >
-                    <option value="">
-                      Select…
-                    </option>
-
-                    {subs.map(
-                      (s) => (
-                        <option
-                          key={s}
-                          value={s}
-                        >
-                          {s}
-                        </option>
-                      ),
-                    )}
-                  </select>
-                </Field>
-              )}
-
-              <Field
-                label="Short description"
-                error={
-                  errs[
-                    "description"
-                  ]
-                }
-                hint={`${d.description.length}/300 — one or two sentences is plenty.`}
-              >
-                <textarea
-                  className={`${input} h-28 py-2`}
-                  value={
-                    d.description
-                  }
-                  maxLength={300}
-                  onChange={(e) =>
-                    set({
-                      description:
-                        e.target.value,
-                    })
-                  }
-                />
-              </Field>
-
-              <Field
-                label="Poster or image (optional)"
-                error={
-                  errs["poster"]
-                }
-              >
-                <span className="flex items-center gap-3">
-                  {preview ? (
-                    <img
-                      src={preview}
-                      alt="Poster preview"
-                      className="h-20 w-20 rounded-md object-cover"
-                    />
-                  ) : (
-                    <span className="flex h-20 w-20 items-center justify-center rounded-md border border-dashed border-border text-muted-foreground">
-                      <ImagePlus
-                        size={22}
-                        aria-hidden="true"
-                      />
-                    </span>
-                  )}
-
-                  <input
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp"
-                    className="text-sm"
-                    onChange={(e) =>
-                      set({
-                        poster:
-                          e.target
-                            .files?.[0] ??
-                          null,
-                      })
-                    }
-                  />
-                </span>
-              </Field>
-            </>
-          )}
-
-          {step === 1 && (
-            <>
-              <div className="grid grid-cols-2 gap-3">
-                <Field
-                  label="Date"
-                  error={
-                    errs["date"]
-                  }
-                >
-                  <input
-                    type="date"
-                    className={input}
-                    min={today()}
-                    value={d.date}
-                    onChange={(e) =>
-                      set({
-                        date:
-                          e.target.value,
-                      })
-                    }
-                  />
-                </Field>
-
-                <Field
-                  label="End date (if multi-day)"
-                  error={
-                    errs["endDate"]
-                  }
-                >
-                  <input
-                    type="date"
-                    className={input}
-                    min={
-                      d.date ||
-                      today()
-                    }
-                    value={
-                      d.endDate
-                    }
-                    onChange={(e) =>
-                      set({
-                        endDate:
-                          e.target.value,
-                      })
-                    }
-                  />
-                </Field>
-
-                <Field
-                  label="Start time"
-                  error={
-                    errs[
-                      "startTime"
-                    ]
-                  }
-                >
-                  <TimePicker
-                    value={
-                      d.startTime
-                    }
-                    onChange={(
-                      value,
-                    ) =>
-                      set({
-                        startTime:
-                          value,
-                      })
-                    }
-                  />
-                </Field>
-
-                <Field
-                  label="End time (optional)"
-                  error={
-                    errs[
-                      "endTime"
-                    ]
-                  }
-                >
-                  <TimePicker
-                    value={
-                      d.endTime
-                    }
-                    onChange={(
-                      value,
-                    ) =>
-                      set({
-                        endTime:
-                          value,
-                      })
-                    }
-                    optional
-                  />
-                </Field>
-              </div>
-
-              <Field
-                label="Venue"
-                error={
-                  errs["venue"]
-                }
-              >
-                <input
-                  className={input}
-                  value={d.venue}
-                  maxLength={150}
-                  onChange={(e) =>
-                    set({
-                      venue:
-                        e.target.value,
-                    })
-                  }
-                  placeholder="e.g. Municipal Stadium"
-                />
-              </Field>
-
-              <div className="grid grid-cols-2 gap-3">
-                <Field
-                  label="Town / locality"
-                  error={
-                    errs[
-                      "locality"
-                    ]
-                  }
-                >
-                  <input
-                    className={input}
-                    value={
-                      d.locality
-                    }
-                    maxLength={100}
-                    onChange={(e) =>
-                      set({
-                        locality:
-                          e.target.value,
-                      })
-                    }
-                    placeholder="e.g. Payyanur"
-                  />
-                </Field>
-
-                <Field
-                  label="District"
-                  error={
-                    errs[
-                      "district"
-                    ]
-                  }
-                >
-                  <select
-                    className={input}
-                    value={
-                      d.district
-                    }
-                    onChange={(e) =>
-                      set({
-                        district:
-                          e.target.value,
-                      })
-                    }
-                  >
-                    <option value="">
-                      Select…
-                    </option>
-
-                    {DISTRICTS.map(
-                      (x) => (
-                        <option
-                          key={x}
-                          value={x}
-                        >
-                          {x}
-                        </option>
-                      ),
-                    )}
-                  </select>
-                </Field>
-              </div>
-
-              <div>
-                <p className="mb-1 text-sm font-medium">
-                  Exact position
-                </p>
-
-                <p className="mb-2 text-xs text-muted-foreground">
-                  {d.pos
-                    ? `Pinned at ${d.pos.lat.toFixed(
-                        4,
-                      )}, ${d.pos.lng.toFixed(
-                        4,
-                      )} — drag the pin to adjust.`
-                    : "Tap the map to drop a pin, or use the locate button."}
-                </p>
-
-                <div className="h-72 overflow-hidden rounded-lg border border-border">
-                  <ClientOnly
-                    fallback={
-                      <div className="flex h-full items-center justify-center bg-muted text-sm text-muted-foreground">
-                        Loading map…
-                      </div>
-                    }
-                  >
-                    <Suspense
-                      fallback={
-                        <div className="h-full bg-muted" />
-                      }
-                    >
-                      <EventMap
-                        events={[]}
-                        pick={d.pos}
-                        onPick={
-                          onPick
-                        }
-                        onLocate={
-                          onPick
-                        }
-                      />
-                    </Suspense>
-                  </ClientOnly>
-                </div>
-
-                {errs["pos"] && (
-                  <p
-                    role="alert"
-                    className="mt-1 text-xs text-destructive"
-                  >
-                    {errs["pos"]}
-                  </p>
-                )}
-              </div>
-            </>
-          )}
-
-          {step === 2 && (
-            <>
-              <div className="text-sm">
-                <span className="mb-1 block font-medium">
-                  Entry
-                </span>
-
-                <div
-                  className="flex flex-wrap gap-2"
-                  role="group"
-                  aria-label="Entry"
-                >
-                  {(
-                    [
-                      [
-                        "free",
-                        "Free",
-                      ],
-                      [
-                        "paid",
-                        "Paid",
-                      ],
-                      [
-                        "registration",
-                        "Registration required",
-                      ],
-                    ] as const
-                  ).map(
-                    ([k, l]) => (
-                      <button
-                        key={k}
-                        type="button"
-                        aria-pressed={
-                          d.entry ===
-                          k
-                        }
-                        onClick={() =>
-                          set({
-                            entry:
-                              k,
-                          })
-                        }
-                        className={`h-10 rounded-full border px-4 text-sm focus-visible:outline-2 focus-visible:outline-ring ${
-                          d.entry ===
-                          k
-                            ? "border-foreground bg-foreground text-background"
-                            : "border-border"
-                        }`}
-                      >
-                        {l}
-                      </button>
-                    ),
-                  )}
-                </div>
-              </div>
-
-              {d.entry ===
-                "paid" && (
-                <Field
-                  label="Entry fee"
-                  error={
-                    errs["fee"]
-                  }
-                >
-                  <input
-                    className={input}
-                    value={d.fee}
-                    maxLength={60}
-                    onChange={(e) =>
-                      set({
-                        fee: e.target
-                          .value,
-                      })
-                    }
-                    placeholder="e.g. ₹200 or ₹100–₹500"
-                  />
-                </Field>
-              )}
-
-              <Field
-                label="Ticket / registration link (optional)"
-                error={
-                  errs[
-                    "ticketUrl"
-                  ]
-                }
-              >
-                <input
-                  className={input}
-                  inputMode="url"
-                  value={
-                    d.ticketUrl
-                  }
-                  onChange={(e) =>
-                    set({
-                      ticketUrl:
-                        e.target.value,
-                    })
-                  }
-                  placeholder="https://"
-                />
-              </Field>
-
-              <Field
-                label="Instagram (optional)"
-                error={
-                  errs[
-                    "instagram"
-                  ]
-                }
-              >
-                <input
-                  className={input}
-                  value={
-                    d.instagram
-                  }
-                  onChange={(e) =>
-                    set({
-                      instagram:
-                        e.target.value,
-                    })
-                  }
-                  placeholder="@handle or link"
-                />
-              </Field>
-
-              <Field
-                label="Official website (optional)"
-                error={
-                  errs["website"]
-                }
-              >
-                <input
-                  className={input}
-                  inputMode="url"
-                  value={
-                    d.website
-                  }
-                  onChange={(e) =>
-                    set({
-                      website:
-                        e.target.value,
-                    })
-                  }
-                  placeholder="https://"
-                />
-              </Field>
-
-              <Field
-                label="Other useful link (optional)"
-                error={
-                  errs["otherUrl"]
-                }
-              >
-                <input
-                  className={input}
-                  inputMode="url"
-                  value={
-                    d.otherUrl
-                  }
-                  onChange={(e) =>
-                    set({
-                      otherUrl:
-                        e.target.value,
-                    })
-                  }
-                  placeholder="https://"
-                />
-              </Field>
-
-              <Field
-                label="Contact information (optional)"
-                error={
-                  errs["contact"]
-                }
-                hint="Shown publicly on the event page."
-              >
-                <input
-                  className={input}
-                  value={
-                    d.contact
-                  }
-                  maxLength={100}
-                  onChange={(e) =>
-                    set({
-                      contact:
-                        e.target.value,
-                    })
-                  }
-                  placeholder="Phone or email"
-                />
-              </Field>
-            </>
-          )}
-
-          {step === 3 && (
-            <article className="overflow-hidden rounded-lg border border-border bg-card">
-              {preview && (
-                <img
-                  src={preview}
-                  alt="Poster"
-                  className="max-h-64 w-full object-cover"
-                />
-              )}
-
-              <div className="space-y-2 p-4 text-sm">
-                <CategoryBadge
-                  e={{
-                    category:
-                      d.category,
-                    subcategory:
-                      d.subcategory,
-                  }}
-                />
-
-                <h2 className="text-lg font-bold">
-                  {d.title}
-                </h2>
-
-                <p>
-                  {d.description}
-                </p>
-
-                <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
-                  <dt className="text-muted-foreground">
-                    When
-                  </dt>
-
-                  <dd>
-                    {fmtDate(
-                      d.date,
-                    )}
-
-                    {d.endDate &&
-                    d.endDate !==
-                      d.date
-                      ? ` – ${fmtDate(
-                          d.endDate,
-                        )}`
-                      : ""}
-
-                    {" · "}
-
-                    {d.startTime &&
-                      fmtTime(
-                        d.startTime,
-                      )}
-
-                    {d.endTime &&
-                      ` – ${fmtTime(
-                        d.endTime,
-                      )}`}
-                  </dd>
-
-                  <dt className="text-muted-foreground">
-                    Where
-                  </dt>
-
-                  <dd>
-                    {d.venue},{" "}
-                    {d.locality},{" "}
-                    {d.district}
-                  </dd>
-
-                  <dt className="text-muted-foreground">
-                    Entry
-                  </dt>
-
-                  <dd>
-                    {d.entry ===
-                    "free"
-                      ? "Free"
-                      : d.entry ===
-                          "paid"
-                        ? `Paid · ${d.fee}`
-                        : "Registration required"}
-                  </dd>
-
-                  {d.contact && (
-                    <>
-                      <dt className="text-muted-foreground">
-                        Contact
-                      </dt>
-
-                      <dd>
-                        {d.contact}
-                      </dd>
-                    </>
-                  )}
-                </dl>
-              </div>
-            </article>
-          )}
-
-          {fail && (
-            <p
-              role="alert"
-              className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"
+            {/* Right: the form */}
+            <form
+              noValidate
+              onSubmit={(e) => {
+                e.preventDefault();
+                void submit();
+              }}
+              className="space-y-6 rounded-xl border border-border bg-card p-4 sm:p-6"
             >
-              {fail}
-            </p>
-          )}
-        </div>
+              {/* Location */}
+              <section className="space-y-3">
+                <SectionTitle>Location details</SectionTitle>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="sm:col-span-2">
+                    <KavuPicker
+                      value={place.venue}
+                      onValue={(text) => setP({ venue: text, kavuId: null })}
+                      kavus={kavus}
+                      loading={kavuQuery.isLoading}
+                      selected={selectedKavu}
+                      onSelect={chooseKavu}
+                      onChange={changeKavu}
+                      error={errs["venue"]}
+                    />
+                  </div>
+                  <Field label="Town or locality" error={errs["locality"]}>
+                    <input
+                      className={input}
+                      value={place.locality}
+                      maxLength={100}
+                      readOnly={!!place.kavuId}
+                      onChange={(e) => setP({ locality: e.target.value })}
+                      placeholder="e.g. Payyanur"
+                    />
+                  </Field>
+                  <Field label="District" error={errs["district"]}>
+                    <select
+                      className={input}
+                      value={place.district}
+                      disabled={!!place.kavuId}
+                      onChange={(e) => setP({ district: e.target.value })}
+                    >
+                      <option value="">Select district</option>
+                      {DISTRICTS.map((district) => (
+                        <option key={district} value={district}>
+                          {district}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                </div>
 
-        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-card p-3">
-          <div className="mx-auto flex max-w-2xl gap-2">
-            {step > 0 && (
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => {
-                  setStep(
-                    step - 1,
-                  );
-                  setFail("");
-                }}
-                className="h-11 rounded-md border border-border px-5 text-sm font-medium hover:bg-muted disabled:opacity-50"
-              >
-                Back
-              </button>
-            )}
+                <div>
+                  <p className="mb-1 text-sm font-medium">Exact position</p>
+                  <p className="mb-2 text-xs text-muted-foreground">
+                    {place.kavuId
+                      ? "Position of the chosen kavu."
+                      : place.pos
+                        ? `Pinned at ${place.pos.lat.toFixed(4)}, ${place.pos.lng.toFixed(4)}. Drag the pin to adjust.`
+                        : "Search for the place or tap the map to drop a pin."}
+                  </p>
+                  <div className="h-64 overflow-hidden rounded-xl border border-gold-line bg-raised sm:h-72">
+                    <ClientOnly fallback={<div className="h-full bg-raised" />}>
+                      <Suspense fallback={<div className="h-full bg-raised" />}>
+                        <EventMap
+                          events={[]}
+                          pick={place.pos}
+                          onPick={place.kavuId ? noopPick : onPick}
+                          onLocate={place.kavuId ? noopPick : onPick}
+                        />
+                      </Suspense>
+                    </ClientOnly>
+                  </div>
+                  {errs["pos"] && (
+                    <p role="alert" className="mt-1 text-xs text-destructive">
+                      {errs["pos"]}
+                    </p>
+                  )}
+                </div>
+              </section>
 
-            {step < 3 ? (
-              <button
-                type="button"
-                onClick={next}
-                className="h-11 flex-1 rounded-md bg-primary text-sm font-semibold text-primary-foreground hover:opacity-90"
-              >
-                Continue
-              </button>
-            ) : (
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() =>
-                  void submit()
-                }
-                className="h-11 flex-1 rounded-md bg-primary text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-60"
-              >
-                {busy
-                  ? "Publishing…"
-                  : "Publish event"}
-              </button>
-            )}
+              {/* Performances */}
+              <section className="space-y-3">
+                <SectionTitle>
+                  {perfs.length === 1 ? "Performance details" : `Performances (${perfs.length})`}
+                </SectionTitle>
+                <p className="text-xs text-muted-foreground">
+                  Times are Kerala time (IST). Theyyams often run overnight: set the end date to the
+                  next day.
+                </p>
+
+                {perfs.map((p, i) => (
+                  <PerfCard
+                    key={p.key}
+                    index={i}
+                    perf={p}
+                    errs={errs}
+                    canRemove={perfs.length > 1}
+                    onChange={(patch) => setPerf(p.key, patch)}
+                    onRemove={() => setPerfs((list) => list.filter((x) => x.key !== p.key))}
+                  />
+                ))}
+
+                {perfs.length < MAX_PERFORMANCES && (
+                  <button
+                    type="button"
+                    onClick={() => setPerfs((list) => [...list, blankPerf(list[list.length - 1])])}
+                    className="tap inline-flex h-10 w-full items-center justify-center gap-2 rounded-md border border-dashed border-gold-line text-sm font-semibold text-gold hover:border-gold hover:bg-accent"
+                  >
+                    <Plus size={16} aria-hidden="true" />
+                    Add another Theyyam at this place
+                  </button>
+                )}
+              </section>
+
+              {/* Description and image */}
+              <section className="grid gap-4 sm:grid-cols-2">
+                <Field
+                  label="Description"
+                  error={errs["description"]}
+                  hint={`${place.description.length}/300. The festival, the order of performances, or anything a visitor should know.`}
+                >
+                  <textarea
+                    className={`${box.replace("h-11", "h-36")} w-full resize-none px-3 py-2`}
+                    value={place.description}
+                    maxLength={300}
+                    onChange={(e) => setP({ description: e.target.value })}
+                    placeholder="Brief details about the performance…"
+                  />
+                </Field>
+
+                <Field
+                  label="Upload image (optional)"
+                  error={errs["poster"]}
+                  hint="JPG, PNG or WebP, up to 10 MB. Used for every performance above."
+                >
+                  <span className="relative flex h-36 cursor-pointer flex-col items-center justify-center gap-2 overflow-hidden rounded-md border border-dashed border-input bg-background text-center text-xs text-muted-foreground hover:border-gold">
+                    {preview ? (
+                      <img
+                        src={preview}
+                        alt="Selected"
+                        className="absolute inset-0 h-full w-full object-cover"
+                      />
+                    ) : (
+                      <>
+                        <Upload size={22} className="text-gold" aria-hidden="true" />
+                        <span className="px-3">Click to upload or drag and drop</span>
+                      </>
+                    )}
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      className="absolute inset-0 cursor-pointer opacity-0"
+                      onChange={(e) => setP({ poster: e.target.files?.[0] ?? null })}
+                    />
+                  </span>
+                  {place.poster && (
+                    <button
+                      type="button"
+                      onClick={() => setP({ poster: null })}
+                      className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-gold hover:underline"
+                    >
+                      <ImagePlus size={12} aria-hidden="true" />
+                      Remove {place.poster.name}
+                    </button>
+                  )}
+                </Field>
+              </section>
+
+              {/* Optional extras */}
+              <details className="group rounded-xl border border-border">
+                <summary className="cursor-pointer select-none px-4 py-3 text-sm font-semibold">
+                  More information{" "}
+                  <span className="font-normal text-muted-foreground">(optional)</span>
+                </summary>
+                <div className="grid gap-3 border-t border-border p-4 sm:grid-cols-2">
+                  <Field label="Temple or committee page" error={errs["website"]}>
+                    <input
+                      className={input}
+                      inputMode="url"
+                      value={place.website}
+                      onChange={(e) => setP({ website: e.target.value })}
+                      placeholder="https://"
+                    />
+                  </Field>
+                  <Field label="Instagram" error={errs["instagram"]}>
+                    <input
+                      className={input}
+                      value={place.instagram}
+                      onChange={(e) => setP({ instagram: e.target.value })}
+                      placeholder="@handle or link"
+                    />
+                  </Field>
+                  <Field label="Event or notice link" error={errs["ticketUrl"]}>
+                    <input
+                      className={input}
+                      inputMode="url"
+                      value={place.ticketUrl}
+                      onChange={(e) => setP({ ticketUrl: e.target.value })}
+                      placeholder="https://"
+                    />
+                  </Field>
+                  <Field label="Other useful link" error={errs["otherUrl"]}>
+                    <input
+                      className={input}
+                      inputMode="url"
+                      value={place.otherUrl}
+                      onChange={(e) => setP({ otherUrl: e.target.value })}
+                      placeholder="https://"
+                    />
+                  </Field>
+                  <div className="sm:col-span-2">
+                    <Field
+                      label="Contact"
+                      error={errs["contact"]}
+                      hint="Shown publicly. A temple committee number is ideal."
+                    >
+                      <input
+                        className={input}
+                        value={place.contact}
+                        maxLength={100}
+                        onChange={(e) => setP({ contact: e.target.value })}
+                        placeholder="Phone or email"
+                      />
+                    </Field>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <p className="mb-2 text-sm font-medium">Where did you hear about it?</p>
+                    <div className="flex flex-wrap gap-2">
+                      {sourceOptions.map(([key, label]) => {
+                        const selected = place.sourceTypes.includes(key);
+                        return (
+                          <button
+                            key={key}
+                            type="button"
+                            aria-pressed={selected}
+                            onClick={() =>
+                              setP({
+                                sourceTypes: selected
+                                  ? place.sourceTypes.filter((s) => s !== key)
+                                  : [...place.sourceTypes, key],
+                              })
+                            }
+                            className={pill(selected)}
+                          >
+                            {label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              </details>
+
+              {fail && (
+                <p
+                  role="alert"
+                  className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"
+                >
+                  {fail}
+                </p>
+              )}
+
+              <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border pt-4">
+                <Link
+                  to="/"
+                  className="tap inline-flex h-11 items-center rounded-md border border-border px-5 text-sm font-semibold hover:bg-accent"
+                >
+                  Cancel
+                </Link>
+                <button
+                  type="submit"
+                  disabled={busy}
+                  className="tap h-11 rounded-md bg-gold px-6 text-sm font-bold text-background hover:opacity-90 disabled:opacity-60"
+                >
+                  {busy ? "Posting…" : "POST"}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       </main>
